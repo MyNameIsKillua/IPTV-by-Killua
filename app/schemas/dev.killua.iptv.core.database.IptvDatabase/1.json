@@ -1,0 +1,267 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "6afb87b690a34586f55cb830f5a4db12",
+    "entities": [
+      {
+        "tableName": "accounts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `status` TEXT NOT NULL, `expiresAtEpochSeconds` INTEGER, `activeConnections` INTEGER, `maximumConnections` INTEGER, `serverTimezone` TEXT, `allowedOutputFormats` TEXT NOT NULL, `lastValidatedAtEpochMillis` INTEGER NOT NULL, `lastLiveSyncAtEpochMillis` INTEGER, PRIMARY KEY(`accountId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtEpochSeconds",
+            "columnName": "expiresAtEpochSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "activeConnections",
+            "columnName": "activeConnections",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maximumConnections",
+            "columnName": "maximumConnections",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "serverTimezone",
+            "columnName": "serverTimezone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "allowedOutputFormats",
+            "columnName": "allowedOutputFormats",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastValidatedAtEpochMillis",
+            "columnName": "lastValidatedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastLiveSyncAtEpochMillis",
+            "columnName": "lastLiveSyncAtEpochMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId"
+          ]
+        }
+      },
+      {
+        "tableName": "live_categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteCategoryId` TEXT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteCategoryId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteCategoryId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_live_categories_accountId_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_categories_accountId_sortOrder` ON `${TABLE_NAME}` (`accountId`, `sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "live_channels",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `remoteCategoryId` TEXT, `name` TEXT NOT NULL, `logoUrl` TEXT, `epgChannelId` TEXT, `containerExtension` TEXT, `providerOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "logoUrl",
+            "columnName": "logoUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "epgChannelId",
+            "columnName": "epgChannelId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "containerExtension",
+            "columnName": "containerExtension",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "providerOrder",
+            "columnName": "providerOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_live_channels_accountId_remoteCategoryId",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "remoteCategoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_remoteCategoryId` ON `${TABLE_NAME}` (`accountId`, `remoteCategoryId`)"
+          },
+          {
+            "name": "index_live_channels_accountId_providerOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "providerOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_providerOrder` ON `${TABLE_NAME}` (`accountId`, `providerOrder`)"
+          },
+          {
+            "name": "index_live_channels_accountId_name",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_name` ON `${TABLE_NAME}` (`accountId`, `name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "recent_channels",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `lastWatchedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastWatchedAtEpochMillis",
+            "columnName": "lastWatchedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_recent_channels_accountId_lastWatchedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "lastWatchedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_recent_channels_accountId_lastWatchedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `lastWatchedAtEpochMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6afb87b690a34586f55cb830f5a4db12')"
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+# Android / Gradle
+.gradle/
+.kotlin/
+**/build/
+local.properties
+captures/
+screenshots/
+codex-clipboard-*.png
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Signing and secrets
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+secrets.properties
+google-services.json
+*service-account*.json
+*.credentials
+.env
+.env.*
+
+# Proton Drive sync conflict copies. They must never be committed; delete them locally.
+*Name clash*
+
+# Operating systems and temporary files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*~

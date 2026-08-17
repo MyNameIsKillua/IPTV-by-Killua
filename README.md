@@ -197,6 +197,43 @@ model, whether the provider uses HTTP or HTTPS, and the affected media type.
 Remove all credentials, authenticated URLs, account identifiers, provider data,
 and private endpoints before sharing anything.
 
+## Contributors
+
+<table>
+  <tr>
+    <td width="25%" align="center">
+      <a href="https://github.com/MyNameIsKillua">
+        <img src="https://avatars.githubusercontent.com/u/109301356?v=4" width="80" alt="MyNameIsKillua">
+        <br><sub><strong>MyNameIsKillua</strong></sub>
+      </a>
+      <br><sub>Creator and maintainer</sub>
+    </td>
+    <td width="25%" align="center">
+      <a href="https://github.com/apps/claude">
+        <img src="https://avatars.githubusercontent.com/u/209825114?v=4" width="80" alt="Claude">
+        <br><sub><strong>Claude</strong></sub>
+      </a>
+      <br><sub>Development assistance</sub>
+    </td>
+    <td width="25%" align="center">
+      <a href="https://github.com/apps/chatgpt-codex-connector">
+        <img src="https://avatars.githubusercontent.com/u/199175422?v=4" width="80" alt="OpenAI Codex">
+        <br><sub><strong>OpenAI Codex</strong></sub>
+      </a>
+      <br><sub>Development and documentation</sub>
+    </td>
+    <td width="25%" align="center">
+      <a href="https://github.com/apps/dependabot">
+        <img src="https://avatars.githubusercontent.com/u/49699333?v=4" width="80" alt="Dependabot">
+        <br><sub><strong>Dependabot</strong></sub>
+      </a>
+      <br><sub>Dependency automation</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>AI-assisted changes are reviewed and committed by the maintainer.</sub>
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
@@ -209,4 +246,4 @@ and private endpoints before sharing anything.
 
 ---
 
-Developed by [MyNameIsKillua](https://github.com/MyNameIsKillua) & [Claude](https://github.com/Claude) & [Codex](https://github.com/Codex).
+Developed and maintained by [MyNameIsKillua](https://github.com/MyNameIsKillua).

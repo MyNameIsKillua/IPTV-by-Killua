@@ -41,27 +41,55 @@
 
 ## Screenshots
 
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <img src="docs/images/home-library.jpg" alt="Home screen with saved and recently watched content">
-      <br><sub>Home and My List</sub>
-    </td>
-    <td width="33%" align="center">
-      <img src="docs/images/movie-details.jpg" alt="Movie details screen">
-      <br><sub>Movie details</sub>
-    </td>
-    <td width="33%" align="center">
-      <img src="docs/images/series-episodes.jpg" alt="Series episode list with watch progress">
-      <br><sub>Series and episodes</sub>
-    </td>
-  </tr>
-</table>
+<details>
+  <summary><strong>Open the complete screenshot gallery (8 images)</strong></summary>
+  <br>
 
-<p align="center">
-  <img src="docs/images/player-controls.jpg" width="900" alt="Immersive player with playback controls">
-  <br><sub>Immersive Media3 player</sub>
-</p>
+  <table>
+    <tr>
+      <td width="33%" align="center">
+        <img src="docs/images/home-library.jpg" alt="Home screen with saved and recently watched content">
+        <br><sub>Home and My List</sub>
+      </td>
+      <td width="33%" align="center">
+        <img src="docs/images/movie-details.jpg" alt="Movie details screen">
+        <br><sub>Movie details</sub>
+      </td>
+      <td width="33%" align="center">
+        <img src="docs/images/series-episodes.jpg" alt="Series episode list with watch progress">
+        <br><sub>Series and episodes</sub>
+      </td>
+    </tr>
+  </table>
+
+  <p align="center">
+    <img src="docs/images/player-controls.jpg" width="900" alt="Immersive player with playback controls">
+    <br><sub>Immersive Media3 player</sub>
+  </p>
+
+  <table>
+    <tr>
+      <td width="50%" align="center">
+        <img src="docs/images/library-sync.jpg" alt="Initial library synchronization">
+        <br><sub>Initial library sync</sub>
+      </td>
+      <td width="50%" align="center">
+        <img src="docs/images/settings-account.jpg" alt="Account and library settings">
+        <br><sub>Account and library settings</sub>
+      </td>
+    </tr>
+    <tr>
+      <td width="50%" align="center">
+        <img src="docs/images/settings-playback.jpg" alt="Playback and appearance settings">
+        <br><sub>Playback and appearance</sub>
+      </td>
+      <td width="50%" align="center">
+        <img src="docs/images/settings-privacy.jpg" alt="Appearance and privacy settings">
+        <br><sub>Appearance and privacy</sub>
+      </td>
+    </tr>
+  </table>
+</details>
 
 ## Features
 

@@ -272,6 +272,14 @@ and private endpoints before sharing anything.
 - [Release identity and signing](docs/RELEASE.md)
 - [Roadmap](docs/ROADMAP.md)
 
+## Contact
+
+You can find more of my work on [GitHub](https://github.com/MyNameIsKillua?tab=repositories), visit [mynameiskillua.de](https://mynameiskillua.de), or contact me directly on Discord.
+
+<a href="https://discord.com/users/873559728825974874">
+  <img src="https://img.shields.io/badge/Discord-MyNameIsKillua-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Contact me on Discord" />
+</a>
+
 ---
 
 Developed and maintained by [MyNameIsKillua](https://github.com/MyNameIsKillua).

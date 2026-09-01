@@ -21,7 +21,7 @@ import androidx.room.RoomDatabase
         WatchProgressEntity::class,
         WatchlistEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class IptvDatabase : RoomDatabase() {
@@ -30,4 +30,8 @@ abstract class IptvDatabase : RoomDatabase() {
     abstract fun movieDao(): MovieDao
     abstract fun seriesDao(): SeriesDao
     abstract fun watchlistDao(): WatchlistDao
+
+    // Read-only, for the Settings export. Adding a DAO is not a schema change: it declares queries
+    // against tables that already exist, so no version bump and no migration.
+    abstract fun userDataDao(): UserDataDao
 }

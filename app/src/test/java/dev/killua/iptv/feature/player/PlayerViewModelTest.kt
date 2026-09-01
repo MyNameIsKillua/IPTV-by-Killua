@@ -10,6 +10,7 @@ import dev.killua.iptv.core.player.PlaybackRequest
 import dev.killua.iptv.core.player.PlaybackSnapshot
 import dev.killua.iptv.core.player.PlaybackStateSource
 import dev.killua.iptv.core.player.PlayerPresentationState
+import dev.killua.iptv.core.player.TrackLanguageWriter
 import dev.killua.iptv.core.player.WatchProgressWriter
 import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.RecentlyAddedEntry
@@ -28,6 +29,8 @@ import dev.killua.iptv.domain.model.SeriesDetails
 import dev.killua.iptv.domain.model.SeriesEpisode
 import dev.killua.iptv.domain.model.SeriesFilter
 import dev.killua.iptv.domain.model.SeriesSummary
+import dev.killua.iptv.domain.model.TrackLanguagePreferences
+import dev.killua.iptv.domain.model.TrackLanguageSelection
 import dev.killua.iptv.domain.model.WatchProgress
 import dev.killua.iptv.domain.model.SearchSection
 import dev.killua.iptv.domain.repository.LiveRepository
@@ -67,6 +70,7 @@ class PlayerViewModelTest {
     private val liveRepository = FakeLiveRepository()
     private val movieRepository = FakeMovieRepository()
     private val seriesRepository = FakeSeriesRepository()
+    private var rememberedLanguages = TrackLanguagePreferences()
 
     @Before
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -141,6 +145,52 @@ class PlayerViewModelTest {
 
         assertThat(movieRepository.saved.map { it.second }).containsExactly(10_000L, 20_000L)
         viewModel.stop()
+    }
+
+    @Test
+    fun `a track picked by hand is remembered when the player is left`() = runTest {
+        val viewModel = createMovieViewModel(scope = this)
+        testScheduler.advanceUntilIdle()
+        source.emitPlaying()
+        testScheduler.runCurrent()
+        source.handPickedLanguages = TrackLanguageSelection(audioLanguage = "de")
+
+        viewModel.stop()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(rememberedLanguages)
+            .isEqualTo(TrackLanguagePreferences(audioLanguage = "de"))
+    }
+
+    @Test
+    fun `a viewer who never opened the track menu changes nothing`() = runTest {
+        val viewModel = createMovieViewModel(scope = this)
+        testScheduler.advanceUntilIdle()
+        source.emitPlaying()
+        testScheduler.runCurrent()
+
+        viewModel.stop()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(rememberedLanguages).isEqualTo(TrackLanguagePreferences())
+    }
+
+    /** A live channel stores no position, but a second audio track there is worth remembering. */
+    @Test
+    fun `a live channel remembers a track choice even though it stores no progress`() = runTest {
+        val viewModel = createViewModel(scope = this, request = PlaybackRequest.Live("41"))
+        testScheduler.advanceUntilIdle()
+        source.mediaId = PlaybackMediaId.Live(ACCOUNT.id, "41")
+        source.emitPlaying()
+        testScheduler.runCurrent()
+        source.handPickedLanguages = TrackLanguageSelection(subtitlesTurnedOff = true)
+
+        viewModel.stop()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(rememberedLanguages)
+            .isEqualTo(TrackLanguagePreferences(subtitlesDisabled = true))
+        assertThat(movieRepository.saved).isEmpty()
     }
 
     @Test
@@ -562,6 +612,11 @@ class PlayerViewModelTest {
         presentationState = presentationState,
         // The real writer is used: its ownership and duplicate rules are part of what is checked.
         progressWriter = WatchProgressWriter(scope, movieRepository, seriesRepository),
+        trackLanguageWriter = TrackLanguageWriter(
+            scope = scope,
+            load = { rememberedLanguages },
+            store = { rememberedLanguages = it },
+        ),
         autoPlayNextEpisode = autoPlayNextEpisode,
     )
 
@@ -623,6 +678,11 @@ class PlayerViewModelTest {
             events += "capture"
             return PlaybackPosition(mediaId, positionMs, durationMs, hasEnded)
         }
+
+        /** What the stock track menu was last used for, or nothing when it was never opened. */
+        var handPickedLanguages = TrackLanguageSelection()
+
+        override fun captureTrackLanguages(): TrackLanguageSelection = handPickedLanguages
 
         fun emitPlaying() {
             mutableSnapshot.value = PlaybackSnapshot(

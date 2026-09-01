@@ -41,8 +41,8 @@ android {
         applicationId = "dev.killua.iptv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "0.2.0-alpha.30"
+        versionCode = 47
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -156,6 +156,10 @@ tasks.matching { it.name in releaseSigningGatedTasks }.configureEach {
 }
 
 dependencies {
+    // Platform-neutral rules. Android stays the reference implementation; this module exists so a
+    // desktop client can reuse the rules, not so the app can depend on something looser.
+    implementation(project(":shared"))
+
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -209,4 +213,22 @@ dependencies {
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("com.google.truth:truth:1.4.5")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+/*
+ * The domain models moved to :shared, which has no Compose dependency, so they can no longer carry
+ * @Immutable. Several of them hold List fields, which Compose treats as unstable by default, and
+ * losing that information would make screens recompose where they previously did not - invisibly,
+ * because no test can see a recomposition.
+ *
+ * The stability configuration file is the supported way to declare that from outside the type.
+ * Verify it with `-PcomposeReports`, which writes a stability report next to the build output; every
+ * domain model must appear there as stable.
+ */
+composeCompiler {
+    stabilityConfigurationFile =
+        rootProject.layout.projectDirectory.file("compose_stability.conf")
+    if (providers.gradleProperty("composeReports").isPresent) {
+        reportsDestination = layout.buildDirectory.dir("compose-reports")
+    }
 }

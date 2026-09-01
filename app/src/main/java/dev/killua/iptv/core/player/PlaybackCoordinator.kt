@@ -9,12 +9,15 @@ import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.LiveChannel
 import dev.killua.iptv.domain.model.MovieSummary
 import dev.killua.iptv.domain.model.SeriesEpisode
+import dev.killua.iptv.domain.model.TrackLanguagePreferences
 import dev.killua.iptv.domain.model.displayLabel
 import dev.killua.iptv.domain.repository.SessionRepository
 
 class PlaybackCoordinator(
     private val connection: PlayerConnection,
     private val sessionRepository: SessionRepository,
+    /** Read once per title, so a change made in Settings applies from the next one on. */
+    private val trackLanguages: suspend () -> TrackLanguagePreferences = { TrackLanguagePreferences() },
 ) : PlaybackCommands {
     override suspend fun playLive(
         account: Account,
@@ -23,7 +26,14 @@ class PlaybackCoordinator(
     ): String {
         val credentials = sessionRepository.credentialsFor(account.id)
         val format = requestedFormat ?: XtreamStreamUrlFactory.selectFormat(account, channel)
-        val streamUrl = XtreamStreamUrlFactory.buildLiveUrl(credentials, channel.id, format)
+        /*
+         * A playlist channel carries its own address, and it is the only way to start it: there is
+         * no stream id to build a URL from and no account to put in one. `directSource` is also the
+         * whole test for which kind of channel this is - Xtream never fills it, because
+         * `XtreamJsonParser` leaves `direct_source` unparsed - so no flag has to be threaded here.
+         */
+        val streamUrl = channel.directSource
+            ?: XtreamStreamUrlFactory.buildLiveUrl(credentials, channel.id, format)
         val metadata = MediaMetadata.Builder()
             .setTitle(channel.name)
             .setArtworkUri(channel.logoUrl?.let(Uri::parse))
@@ -34,12 +44,17 @@ class PlaybackCoordinator(
             .setUri(streamUrl)
             .setMimeType(if (format == "m3u8") MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP2T)
             .setMediaMetadata(metadata)
+            .apply {
+                // Only a playlist channel has any; see [PlaybackRequestHeaders] for why they cannot
+                // simply be set on the player.
+                PlaybackRequestHeaders.toExtras(channel.streamHeaders)?.let { extras ->
+                    setRequestMetadata(
+                        MediaItem.RequestMetadata.Builder().setExtras(extras).build(),
+                    )
+                }
+            }
             .build()
-        connection.awaitController().run {
-            setMediaItem(item)
-            prepare()
-            play()
-        }
+        startItem(item)
         return format
     }
 
@@ -71,11 +86,7 @@ class PlaybackCoordinator(
             .setUri(streamUrl)
             .setMediaMetadata(metadata)
             .build()
-        connection.awaitController().run {
-            setMediaItem(item, startPositionMs.coerceAtLeast(0L))
-            prepare()
-            play()
-        }
+        startItem(item, startPositionMs.coerceAtLeast(0L))
         return extension
     }
 
@@ -106,12 +117,28 @@ class PlaybackCoordinator(
             .setUri(streamUrl)
             .setMediaMetadata(metadata)
             .build()
+        startItem(item, startPositionMs.coerceAtLeast(0L))
+        return extension
+    }
+
+    /**
+     * Loads [item] and starts it, with the remembered track languages already in place.
+     *
+     * The languages are applied after the item and before `prepare`, which is the only point where
+     * they cost nothing: the first track selection pass then already picks the right audio, instead
+     * of the viewer hearing the wrong language for a second and the player switching under them.
+     *
+     * The same reasoning as the resume position, which is handed over in the same call for the same
+     * reason.
+     */
+    private suspend fun startItem(item: MediaItem, startPositionMs: Long? = null) {
+        val languages = trackLanguages()
         connection.awaitController().run {
-            setMediaItem(item, startPositionMs.coerceAtLeast(0L))
+            if (startPositionMs == null) setMediaItem(item) else setMediaItem(item, startPositionMs)
+            applyTrackLanguages(languages)
             prepare()
             play()
         }
-        return extension
     }
 
     override fun retry() = connection.retry()

@@ -1,6 +1,7 @@
 package dev.killua.iptv.core.security
 
 import com.google.common.truth.Truth.assertThat
+import dev.killua.iptv.domain.model.LibrarySource
 import dev.killua.iptv.domain.model.XtreamCredentials
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
@@ -57,7 +58,9 @@ class CredentialCodecTest {
 
     @Test
     fun `unsupported record version is rejected`() {
-        val payload = record(version = 2, fields = listOf("id", "server", "user", "password"))
+        // Was version 2 until 26 August 2026, when 2 became the current format. Zero covers the
+        // lower bound; the upper one has a case of its own.
+        val payload = record(version = 0, fields = listOf("id", "server", "user", "password"))
 
         val error = assertThrows(IllegalArgumentException::class.java) {
             CredentialCodec.decode(payload)
@@ -107,6 +110,54 @@ class CredentialCodecTest {
         assertThat(error).hasMessageThat().contains("Trailing credential data")
     }
 
+    @Test
+    fun `a playlist account survives the round trip with its source`() {
+        val credentials = XtreamCredentials(
+            accountId = "account-1",
+            serverUrl = "https://playlist.example/index.m3u",
+            username = "",
+            password = "",
+            source = LibrarySource.Playlist,
+        )
+
+        val decoded = CredentialCodec.decode(CredentialCodec.encode(credentials))
+
+        assertCredentialsEqual(decoded, credentials)
+        assertThat(decoded.source).isEqualTo(LibrarySource.Playlist)
+    }
+
+    @Test
+    fun `a record written before the source existed is still read, as an Xtream account`() {
+        // Exactly what version 1 wrote: four fields and no fifth. Refusing it would sign the
+        // viewer out on update to recover a value that has only one possible answer.
+        val legacy = record(1, listOf("account-1", "https://provider.example/", "killua", "s3cret"))
+
+        val decoded = CredentialCodec.decode(legacy)
+
+        assertThat(decoded.accountId).isEqualTo("account-1")
+        assertThat(decoded.serverUrl).isEqualTo("https://provider.example/")
+        assertThat(decoded.username).isEqualTo("killua")
+        assertThat(decoded.password).isEqualTo("s3cret")
+        assertThat(decoded.source).isEqualTo(LibrarySource.Xtream)
+    }
+
+    @Test
+    fun `a source this build does not know reads as Xtream rather than refusing the record`() {
+        val unknown = record(
+            2,
+            listOf("account-1", "https://provider.example/", "killua", "s3cret", "SomethingLater"),
+        )
+
+        assertThat(CredentialCodec.decode(unknown).source).isEqualTo(LibrarySource.Xtream)
+    }
+
+    @Test
+    fun `a version from the future is still refused`() {
+        val ahead = record(3, listOf("account-1", "https://provider.example/", "killua", "s3cret"))
+
+        assertThrows(IllegalArgumentException::class.java) { CredentialCodec.decode(ahead) }
+    }
+
     private fun record(version: Int, fields: List<String>): ByteArray =
         ByteArrayOutputStream().use { bytes ->
             DataOutputStream(bytes).use { output ->
@@ -125,5 +176,6 @@ class CredentialCodecTest {
         assertThat(actual.serverUrl).isEqualTo(expected.serverUrl)
         assertThat(actual.username).isEqualTo(expected.username)
         assertThat(actual.password).isEqualTo(expected.password)
+        assertThat(actual.source).isEqualTo(expected.source)
     }
 }

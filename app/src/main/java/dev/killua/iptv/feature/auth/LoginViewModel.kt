@@ -22,20 +22,31 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
+/**
+ * The three ways in.
+ *
+ * [ProviderLink] was called `M3uUrl` until 26 August 2026, and the name was a trap: it means the
+ * `get.php` line a **provider** issues, which happens to serve an M3U. Adding a mode that reads an
+ * actual playlist file next to something called `m3uUrl` that does not would have been worse than
+ * the rename.
+ */
 enum class LoginMethod {
     Credentials,
-    M3uUrl,
+    ProviderLink,
+    Playlist,
 }
 
 data class LoginUiState(
     val loginMethod: LoginMethod = LoginMethod.Credentials,
     val playlistName: String = "",
+    /** The address of an `.m3u` file, which is not a credential and is not masked. */
+    val playlistUrl: String = "",
     val server: String = "",
     val username: String = "",
     val password: String = "",
     val passwordVisible: Boolean = false,
-    val m3uUrl: String = "",
-    val m3uUrlVisible: Boolean = false,
+    val providerLink: String = "",
+    val providerLinkVisible: Boolean = false,
     val isTesting: Boolean = false,
     val isConnecting: Boolean = false,
     val connectionTested: Boolean = false,
@@ -47,7 +58,8 @@ data class LoginUiState(
     val canSubmit: Boolean
         get() = when (loginMethod) {
             LoginMethod.Credentials -> server.isNotBlank() && username.isNotBlank() && password.isNotBlank()
-            LoginMethod.M3uUrl -> m3uUrl.isNotBlank()
+            LoginMethod.ProviderLink -> providerLink.isNotBlank()
+            LoginMethod.Playlist -> playlistUrl.isNotBlank()
         } && !isTesting && !isConnecting
 
     override fun toString(): String =
@@ -66,13 +78,23 @@ class LoginViewModel(private val repository: SessionRepository) : ViewModel() {
         if (mutableState.value.loginMethod == value) return
         updateFields {
             when (value) {
-                LoginMethod.Credentials -> copy(loginMethod = value, m3uUrl = "", m3uUrlVisible = false)
-                LoginMethod.M3uUrl -> copy(
+                LoginMethod.Credentials -> copy(loginMethod = value, providerLink = "", providerLinkVisible = false)
+                LoginMethod.ProviderLink -> copy(
                     loginMethod = value,
                     server = "",
                     username = "",
                     password = "",
                     passwordVisible = false,
+                )
+                // Leaving the other way in's secrets behind, exactly as the two above do.
+                LoginMethod.Playlist -> copy(
+                    loginMethod = value,
+                    server = "",
+                    username = "",
+                    password = "",
+                    passwordVisible = false,
+                    providerLink = "",
+                    providerLinkVisible = false,
                 )
             }
         }
@@ -82,9 +104,10 @@ class LoginViewModel(private val repository: SessionRepository) : ViewModel() {
     fun setServer(value: String) = updateFields { copy(server = value) }
     fun setUsername(value: String) = updateFields { copy(username = value) }
     fun setPassword(value: String) = updateFields { copy(password = value) }
-    fun setM3uUrl(value: String) = updateFields { copy(m3uUrl = value) }
+    fun setProviderLink(value: String) = updateFields { copy(providerLink = value) }
+    fun setPlaylistUrl(value: String) = updateFields { copy(playlistUrl = value) }
     fun togglePasswordVisibility() = mutableState.update { it.copy(passwordVisible = !it.passwordVisible) }
-    fun toggleM3uUrlVisibility() = mutableState.update { it.copy(m3uUrlVisible = !it.m3uUrlVisible) }
+    fun toggleProviderLinkVisibility() = mutableState.update { it.copy(providerLinkVisible = !it.providerLinkVisible) }
 
     fun testConnection() {
         launchRequest(isTest = true) { attempt, generation ->
@@ -145,6 +168,44 @@ class LoginViewModel(private val repository: SessionRepository) : ViewModel() {
         }
     }
 
+    /**
+     * Signing in with a playlist address.
+     *
+     * Deliberately not routed through [launchRequest], which exists to turn typed fields into
+     * server-plus-credentials before anything is attempted. A playlist has neither: the address is
+     * the whole of it, and the only check worth making is opening it, which the repository does.
+     */
+    fun connectPlaylist() {
+        activeRequest?.cancel()
+        val generation = ++requestGeneration
+        val address = mutableState.value.playlistUrl.trim()
+        if (address.isBlank()) return
+        mutableState.update { it.copy(isConnecting = true, errorMessage = null) }
+        activeRequest = viewModelScope.launch {
+            try {
+                repository.loginWithPlaylist(address, mutableState.value.playlistName)
+                coroutineContext.ensureActive()
+                if (generation != requestGeneration) return@launch
+                mutableState.value = LoginUiState(loginMethod = LoginMethod.Playlist)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Every way this fails is the address, and none of them is an account: a typo, a
+                // page that is not a playlist, a host that did not answer, or one the rule refuses.
+                // One sentence covers all four without guessing which.
+                if (generation == requestGeneration) {
+                    mutableState.update {
+                        it.copy(
+                            isConnecting = false,
+                            errorMessage = "That playlist could not be read. Check the address — " +
+                                "it should point at an .m3u file.",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private fun launchRequest(
         isTest: Boolean,
         block: suspend (LoginAttempt, Long) -> Unit,
@@ -186,7 +247,9 @@ class LoginViewModel(private val repository: SessionRepository) : ViewModel() {
 
     private fun resolveAttempt(state: LoginUiState): LoginAttemptResult = when (state.loginMethod) {
         LoginMethod.Credentials -> resolveCredentialFields(state)
-        LoginMethod.M3uUrl -> when (val parsed = XtreamM3uUrlParser.parse(state.m3uUrl)) {
+        // Never reached: the playlist way in has its own path; see [connectPlaylist].
+        LoginMethod.Playlist -> LoginAttemptResult.Invalid("Playlists do not use this path")
+        LoginMethod.ProviderLink -> when (val parsed = XtreamM3uUrlParser.parse(state.providerLink)) {
             is XtreamM3uUrlResult.Valid -> LoginAttemptResult.Valid(
                 LoginAttempt(
                     server = parsed.credentials.server,

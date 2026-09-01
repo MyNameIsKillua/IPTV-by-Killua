@@ -2,7 +2,17 @@
 
 ## Scope
 
-The current application is a single Android `app` module with layered packages. It is intentionally small enough to navigate without framework-heavy indirection, while keeping Xtream behavior, local persistence, playback, and Compose UI independent.
+The project is three Gradle modules. `:app` is the Android application, with layered packages.
+`:shared` is a plain Kotlin library holding the platform-neutral domain layer and the Xtream
+protocol; see *The `:shared` module* below. `:desktop` is the Windows/macOS client, built on
+Compose Multiplatform and libvlc, and it depends on `:shared` and never on `:app`; see
+*The desktop client* below. The whole is intentionally small enough to navigate without
+framework-heavy indirection, while keeping Xtream behavior, local persistence, playback, and Compose
+UI independent.
+
+**Android is the reference implementation.** It is the only target with a device gate, a frozen
+release identity and users. A change to `:shared` that would degrade it is not a change worth
+making, whatever it buys the other client.
 
 The architectural boundary is the configured provider: Killua IPTV has no project-owned backend. Network traffic is limited to the configured Xtream server and media/artwork URLs supplied by that server.
 
@@ -24,6 +34,21 @@ Compose player screen
         |
         v
 PlaybackCoordinator -> PlayerConnection -> MediaSessionService -> ExoPlayer
+```
+
+The desktop client is deliberately shallower, because it has less to hold:
+
+```text
+Main (window, keys, preferences)
+        |
+        v
+BrowseScreen (all browsing state)
+     /       |        \
+    v        v         v
+XtreamDesktopClient   stores   VlcVideoPlayer
+    |                   |
+    v                   v
+:shared protocol    :shared export format
 ```
 
 UI code consumes repository interfaces and immutable domain objects. Data implementations know about Room and the Xtream adapter. Xtream-specific endpoint and response handling stays under `data/xtream`; it does not leak into Composables.
@@ -63,7 +88,7 @@ The domain layer defines:
 - account, live category, live channel, session, and failure models;
 - provider-neutral `MovieCategory`, `MovieSummary`, and `MovieDetails` models, cached in Room, shown by the Movies screens, and playable;
 - provider-neutral `SeriesCategory`, `SeriesSummary`, `SeriesDetails`, and `SeriesEpisode` models, cached in Room, browsable, and playable;
-- `SessionRepository`, `LiveRepository`, and `MovieRepository` contracts;
+- `SessionRepository`, `LiveRepository`, `MovieRepository`, `SeriesRepository`, and `WatchlistRepository` contracts, all of which live in `:shared`;
 - category selections (`All`, `Recent`, `Uncategorized`, provider category), wrapped together with a search term and sort order in `LiveFilter` and `MovieFilter`;
 - `WatchProgressPolicy`, which defines the VOD completion rule and is applied by `DefaultMovieRepository.saveProgress` on every checkpoint the player writes.
 
@@ -192,11 +217,171 @@ A refresh of that size still takes a long time — roughly a minute and a half f
 
 ## Portability
 
-The domain models, repository contracts, URL rules, JSON semantics, format selection, and completion policy are plain Kotlin or close to it. Android-specific concerns—Room, DataStore, Keystore, Compose, and Media3—remain behind those boundaries. A future Windows client can reuse concepts and fixtures, but this is not currently a Kotlin Multiplatform project and Android quality takes priority.
+The domain models, repository contracts, URL rules, JSON semantics, format selection, and completion policy are plain Kotlin or close to it. Android-specific concerns—Room, DataStore, Keystore, Compose, and Media3—remain behind those boundaries. Android quality takes priority over any other target.
+
+### The `:shared` module
+
+`:shared` is a plain Kotlin JVM library. `:app` depends on it; nothing depends on `:app`. It holds
+rules with **no external dependency whatsoever**: the track-language rules, the subtitle-style rules,
+watch-progress completion, and search-text normalisation, each with the tests that were already
+covering them.
+
+It is deliberately not a Kotlin Multiplatform module yet. What is in it has no dependencies, so a JVM
+library already serves Android, Windows and macOS; multiplatform only starts paying for itself at
+iOS, which additionally needs Ktor in place of Retrofit. The conversion is mechanical when that day
+comes: change the plugin, and `src/main/kotlin` becomes `src/commonMain/kotlin`.
+
+**The domain models moved too**, which needed the `@Immutable` problem solved rather than worked
+around. That annotation is a recomposition hint, about twenty types carried it, and several of them
+hold `List` fields, which Compose treats as unstable by default — so simply deleting it would have
+made screens recompose where they previously did not, invisibly, because no test can observe a
+recomposition.
+
+`compose_stability.conf` in the repository root declares `dev.killua.iptv.domain.model.*` stable from
+the outside, and `:app` points the Compose compiler at it. This is the supported mechanism for types
+you do not want coupled to Compose, and it keeps `:shared` free of any dependency at all.
+
+**Verify it after touching those models**, because nothing else will:
+
+```
+gradlew :app:compileDebugKotlin -PcomposeReports --rerun-tasks
+```
+
+Then read `app/build/compose-reports/app_debug-composables.txt`. Every bare domain-model parameter
+must appear as `stable`. A `List<Model>` parameter reads `unstable` and always did: `kotlin.collections.List`
+is unstable to Compose whatever its element type, and the annotation never changed that.
+
+**The whole domain layer now lives in `:shared`** - models, repository contracts, the EPG selection
+rules, watch-progress completion, the track and subtitle rules, and search normalisation. Two things
+had to be settled to get the contracts across:
+
+- They return `androidx.paging.PagingData`, so `:shared` depends on `paging-common`. That artifact is
+  plain Kotlin, unlike `paging-runtime`, and it is exposed as `api` because it appears in the
+  contracts' own signatures. It is the module's only dependency and any second one needs an argument.
+- `SessionRepository` reached **upward** into `core/network` for `NormalizedServer`, which is the
+  wrong direction with or without modules. `ServerUrlNormalizer` moved across whole, types and
+  parser together. It keeps its original package, so no import anywhere had to change.
+
+**The Xtream protocol moved too.** `XtreamJsonParser`, `XtreamStreamUrlFactory`,
+`XtreamLanguageTagger`, `XtreamM3uUrlParser` and `ServerUrlNormalizer` are in `:shared` with their
+tests — the defensive parsing, the streaming that survives a six-figure listing, the container
+whitelist, and the safe construction of authenticated URLs. That is the most expensive code in this
+project to have got right, and a desktop client now inherits it rather than reimplementing it.
+
+**`OkHttp` is the one compromise.** Those files use `HttpUrl` as a URL builder and parser, never as
+an HTTP client, and OkHttp is JVM-only. It was kept rather than rewritten against `java.net.URI`
+because `XtreamStreamUrlFactory` relies on its percent-encoding, that encoding is what keeps
+credentials safe inside authenticated paths, and the tests covering it would have had to be rewritten
+at the same time. An iOS target has to replace it with Ktor's `Url`, on the same trip that replaces
+Retrofit. `CLAUDE.md` carries this as an invariant.
+
+**What is left in `:app`** is everything that genuinely needs Android or a JVM-only framework: Room
+and the whole `core/database` layer, `XtreamApi` and `XtreamRemoteDataSource` (Retrofit), the
+repository *implementations* in `data/repository`, DataStore, the Keystore vault, Media3, and the UI.
+The desktop client carried none of it over: it uses plain OkHttp rather than Retrofit, and it avoided
+the Room question entirely by not needing a cache. That question is still open for any client that
+does.
+
+One consequence worth knowing, because it was found by doing this rather than by reading: Kotlin does
+not smart cast a public property declared in another module. Code that relied on
+`if (x.field != null) use(x.field)` has to read the value into a local first. The compiler catches
+every instance, so this is noisy rather than dangerous.
+
+### The desktop client
+
+`:desktop` reuses the expensive half of this project — the Xtream protocol, the URL construction, the
+domain models and rules, the export format — and reimplements only what a different platform forces
+it to. Its layering is shallower than Android's on purpose, and the absences are the design:
+
+- **No repository interfaces and no DI container.** `AppContainer` exists on Android because a dozen
+  screens share a cache, a vault, a coordinator and a player service. Here one screen holds the
+  browsing state, is handed a client and a player, and constructs its own stores. Interfaces with one
+  implementation and one caller are indirection without a reason.
+- **No database, but the library is held in memory.** This one has moved. The client began by asking
+  for one category at a time and never requesting the six-figure listing at all; that bought it its
+  lack of a database and cost it the two things the owner asked for after using it — a library that
+  is simply *there* the way the phone's is, and a search that can find a title without being told
+  which shelf it is on. `player_api.php` has no search action, so neither is reachable one category
+  at a time. `LibraryIndex` now holds all three listings, read **once per sign-in** through the same
+  streaming parser the phone uses, and nothing about it is written down: no schema, no migration, no
+  reconciliation. The next launch asks again. What the client *persists* is still only the user's own
+  data in the **export format** from `:shared`, so its state file is interchangeable with the phone's
+  by construction rather than by conversion.
+- **Credential storage is opt-in, and it is DPAPI.** `CredentialVault` seals the sign-in with
+  `CryptProtectData` against the logged-in Windows account, writes only when the viewer ticks *Stay
+  signed in*, and deletes on unticking, on sign-out, and when the provider rejects what was stored.
+  `SecretCipher` is the seam: one real implementation, one that refuses on every platform without
+  DPAPI, and a reversing one so the file rules can be tested without calling into Windows.
+- **The library cache is not a database.** `LibraryCache` keeps one JSON file per account so the next
+  launch is not a wait, with its own DTOs rather than the `:shared` models — serializing those would
+  turn a domain type into a stored contract nobody promised. A file that cannot be read, or that
+  carries another version, is **deleted**; there is no migration path and there must not be one. It
+  holds a listing and never an account: `direct_source` is not copied at all, and an artwork address
+  containing the account's own user name or password is dropped.
+- **No ViewModel.** Compose Multiplatform on the desktop has no lifecycle to survive; `remember` and
+  a `rememberCoroutineScope` are the whole of it.
+
+What it does own, and where the boundaries sit:
+
+- `XtreamDesktopClient` is the network layer — plain OkHttp, because Retrofit is the one dependency
+  `:shared` refuses, and a handful of requests built by hand are cheaper than a framework an iOS
+  target would have to replace anyway. It parses through `:shared`'s `XtreamJsonParser` and builds
+  every authenticated URL through `XtreamStreamUrlFactory`. It caches nothing. Its three
+  `withAll…` calls are the whole-library requests: streamed an item at a time rather than read into a
+  string, and given a second OkHttp client with no call deadline, because a listing that legitimately
+  takes minutes is not a request that has hung.
+- `LibraryIndex` is that listing once it has arrived, and `loadLibrary` is what fills it. Three
+  independent steps — a provider that refuses one still gives the other two — reporting counts as
+  they climb, capped at `MAX_ITEMS` so a listing larger than this client can hold stops rather than
+  exhausting the heap, and handing over a fresh index **after every step** so Live becomes usable
+  while the films are still arriving. The index folds every title through `SearchTextNormalizer`
+  once, when the listing lands, which is what makes both the filter box and the search box a scan
+  rather than a hundred thousand string builders per keystroke. `LibraryReader` is the seam its
+  rules are tested through.
+- **Four stores, all local, all keyed by account where the provider's ids are involved.**
+  `DesktopUserData` holds the export at `%LOCALAPPDATA%\KilluaIPTV\user-data.json`; `TitleIndex`
+  holds names for what has been marked; `PreferenceStore` holds the window furniture; `ArtworkStore`
+  holds posters. The last three are disposable sidecars — deleting any of them costs a caption, a
+  window size or a few seconds of re-fetching. Each carries the export format's one-way fingerprint
+  where it holds anything numbered by the provider, because ids are per-account.
+- `EpgCache` is memory-only and expires on two rules rather than a timer; see `docs/ROADMAP.md`.
+- `VlcVideoPlayer` is the playback boundary. libvlc hands over I420 planes, a Skia shader converts
+  them, and the frame becomes an immutable image before Compose sees it — handing Compose a bitmap
+  that libvlc then overwrites crashes the JVM natively. Because the video is ordinary Compose
+  content, every control over it is ordinary Compose.
+- `ScreenKeys` is the one wire from the window down to the screen: keys are handled at the window so
+  they work wherever the pointer is, but only the screen knows what is playable next, where the
+  search box is, and what it holds that the disk does not. Its `flushToDisk` is what the closing
+  window waits on — a suspending call rather than a launched one, because the process is exiting and
+  the coroutine dispatchers run on daemon threads.
+- `Modifier.focusRing` is where the keyboard is. `clickable` makes everything focusable whether
+  anyone meant it or not, so tab and the arrows already reach every control; what was missing was
+  any sign of it. A poster and a list row had their own treatment, and this is the same idea
+  everywhere else, written once so it cannot be half-applied again.
+- **Cyan means focus and violet means chosen**, and neither is used for the other. Violet was
+  already the client's colour for the open section, the programme being read and a mark that is set;
+  focus is not a choice but where the next key will land, and the two land in the same place often
+  enough that sharing a hue makes both unreadable. Cyan was the scheme's `secondary` from the first
+  day and had never been drawn, so giving it this meaning took none away from anything else.
+- `catchingExceptCancellation` is `runCatching` minus the one thing it must not catch. `:app` has
+  rethrown cancellation by hand at every boundary since it had them; the desktop used bare
+  `runCatching` around its requests and never inherited the rule, so a category abandoned mid-flight
+  woke up, reported a failure over whatever had replaced it, and carried on running. Only for blocks
+  that can suspend — around a file read there is no suspension point for a cancellation to arrive at.
+- `Shortcut` is **which** key means what, as data rather than as a `when` block. The window
+  dispatches over it exhaustively, so a key offered to a viewer with no action behind it does not
+  compile, and Settings and the `F1` overlay render the same entries rather than a description of
+  them. It also carries the gate that keeps the window from swallowing what someone is typing.
+- **The screens are one file each**, and `BrowseScreen.kt` holds the state they share. It grew to
+  three thousand lines before the player, My list and a film's record were lifted out of it; that
+  split was done a function at a time with a compile between each, because the compiler is the only
+  reviewer this module has for a change nobody can run. What is left in it is browsing state and the
+  things only browsing uses.
 
 ## Current boundaries
 
-- One application module and one active account.
+- Three modules — `:app`, `:shared` and `:desktop` — and one active account per client. No TV or iOS
+  target exists yet. `:desktop` depends on `:shared` and never on `:app`; nothing depends on `:app`.
 - Live TV, Movie, and Series browsing reach the user, all with search, sorting, and a language filter, and all three content types play through the same service-owned player.
 - Global search over the three cached libraries, a per-channel now/next guide, one saved list spanning all three libraries, and a guide grid over the viewer's own channels all have production data paths. A grid over an arbitrary category or the whole library does not: the provider answers the programme one channel at a time, so that is a request-count problem rather than a layout one.
 - No project-owned cloud sync, telemetry, remote configuration, or account service.

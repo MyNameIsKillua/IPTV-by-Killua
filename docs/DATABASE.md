@@ -2,7 +2,8 @@
 
 ## Storage overview
 
-Killua IPTV uses two local stores with different responsibilities:
+On **Android**, Killua IPTV uses these local stores. The Windows/macOS client stores nothing in a
+database at all; its four files are described under *The desktop client's files* below.
 
 | Store | Contents | Secret? | Backup behavior |
 | --- | --- | --- | --- |
@@ -260,13 +261,37 @@ Reconnect deliberately carries the existing name forward rather than letting the
 overwrite it, because the provider never sends one. The name can also be changed later from Settings,
 which writes the column directly and re-publishes the cached account.
 
+## Room schema version 10
+
+Version 10 adds three nullable columns to `live_channels`, and they exist for a library Xtream did
+not send: `directSource`, `streamUserAgent` and `streamReferrer`.
+
+An M3U playlist has no stream ids to build an address from and no account to put in one — the
+address *is* the entry. So a playlist channel keeps its own address in `directSource`, and the two
+headers beside it are what its server insists on: roughly one channel in sixteen of a real public
+playlist answers 403 without a user agent or a referrer.
+
+**An Xtream channel leaves all three null, and that is what tells the two apart.** There the address
+is built at playback time by `XtreamStreamUrlFactory` out of the credentials, and `XtreamJsonParser`
+deliberately never reads `direct_source`; storing one would put the account in a second place.
+Because of that, no separate "kind" column was added — the presence of `directSource` is the whole
+distinction, and a column that merely restates it could disagree with it.
+
+`MIGRATION_9_10` is three `ALTER TABLE ... ADD COLUMN` statements and nothing else. Nothing is
+backfilled, because null is already the right answer for every row that exists, and nothing is
+rewritten — which matters at the size this database actually reaches: ~156MB with 60,000 channels on
+the reference account, now also on a television stick with 922MB of RAM in total.
+
+The schema moved before anything on Android writes to it, the same order Gate 3 used. Adding a
+column later would be a second migration over those same rows for nothing.
+
 ## Migrations
 
-Room schema export is enabled and KSP writes schemas under `app/schemas` during builds. Version 1 is the initial schema, version 2 adds Movies, version 3 adds the live sort key, version 4 adds the live language, version 5 adds Series, version 6 adds Series favorites, version 7 rewrites the sort keys without touching the schema, version 8 adds the saved list, and version 9 names the account. All nine exported schemas are retained in source control. There is no destructive-migration fallback.
+Room schema export is enabled and KSP writes schemas under `app/schemas` during builds. Version 1 is the initial schema, version 2 adds Movies, version 3 adds the live sort key, version 4 adds the live language, version 5 adds Series, version 6 adds Series favorites, version 7 rewrites the sort keys without touching the schema, version 8 adds the saved list, version 9 names the account, and version 10 gives a channel room for its own address. All ten exported schemas are retained in source control. There is no destructive-migration fallback.
 
-`MIGRATION_1_2` through `MIGRATION_8_9` are registered in the database builder and covered by `app/src/androidTest/.../MigrationTest.kt`. It seeds a version 1 database with account, category, channel, and recent-channel rows and asserts they survive; seeds a version 2 database and asserts that `sortName` is backfilled while recent channels, favorites, and watch progress are untouched; seeds a version 3 database and asserts that a channel inherits its category's language while one under an untagged category stays null; seeds a version 4 database and asserts the Series tables appear empty and writable while live, favorite, and progress rows are untouched, including an episode progress row alongside a movie one; seeds a version 5 database and asserts `series_favorites` accepts a row while nothing existing moves; seeds a version 6 database and asserts each listing table's `sortName` is folded while the displayed `name` is left alone; seeds a version 7 database and asserts the `watchlist` table accepts a row while nothing existing moves; seeds a version 8 database and asserts the new name column starts null while everything the account already held survives; and runs chained 1→4, 1→5, 1→6, 1→7, 1→8, and 1→9 upgrades, which is the path an installation that skipped a release actually takes.
+`MIGRATION_1_2` through `MIGRATION_9_10` are registered in the database builder and covered by `app/src/androidTest/.../MigrationTest.kt`. It seeds a version 1 database with account, category, channel, and recent-channel rows and asserts they survive; seeds a version 2 database and asserts that `sortName` is backfilled while recent channels, favorites, and watch progress are untouched; seeds a version 3 database and asserts that a channel inherits its category's language while one under an untagged category stays null; seeds a version 4 database and asserts the Series tables appear empty and writable while live, favorite, and progress rows are untouched, including an episode progress row alongside a movie one; seeds a version 5 database and asserts `series_favorites` accepts a row while nothing existing moves; seeds a version 6 database and asserts each listing table's `sortName` is folded while the displayed `name` is left alone; seeds a version 7 database and asserts the `watchlist` table accepts a row while nothing existing moves; seeds a version 8 database and asserts the new name column starts null while everything the account already held survives; seeds a version 9 database and asserts an existing channel keeps its name, sort key, language and order with all three new columns null, then that a playlist channel with an address and headers can be written beside it; and runs chained 1→4, 1→5, 1→6, 1→7, 1→8, and 1→9 upgrades, which is the path an installation that skipped a release actually takes.
 
-**Verification status:** executed and passing. On 15 August 2026 all 15 instrumented cases — eleven migrations plus four search statements — ran on a headless API 36 x86_64 emulator (`killua-migration-test`) via `connectedDebugAndroidTest`, with 0 failures, errors, or skips. `runMigrationsAndValidate` compares the migrated database against the exported schema, so a mismatched column, type, or index name would have failed the run.
+**Verification status:** executed and passing. Re-run on **24 August 2026** after version 10: all **22** instrumented cases ran on the headless API 36 x86_64 emulator (`killua-migration-test`) via `connectedDebugAndroidTest`, with 0 failures, errors, or skips — including `migrate9To10_addsThePlaylistColumnsAndLeavesEveryChannelAlone`. The previous run, on 15 August 2026, covered 15 cases up to version 9. `runMigrationsAndValidate` compares the migrated database against the exported schema, so a mismatched column, type, or index name would have failed the run.
 
 That run is also what caught `MIGRATION_6_7`'s first implementation: 397 JVM tests passed while SQLite rejected the statement outright on the device. Anything about a *statement* has to be proven here.
 
@@ -292,6 +317,134 @@ For every schema change:
 6. never solve a production migration by enabling destructive fallback.
 
 During development, uninstalling a debug build is acceptable when no released user data exists, but it is not a migration strategy.
+
+## The desktop client's files
+
+The desktop client has **no database**. Browsing asks the provider for one category at a time, so the
+six-figure listing that forced Room, streaming and batching on Android is never requested, and the
+question of caching a library is postponed rather than answered badly. What it does keep is four
+files in `%LOCALAPPDATA%\KilluaIPTV` (a dot-directory under the home folder elsewhere):
+
+| File | Contents | Scoped to an account? | Disposable? |
+| --- | --- | --- | --- |
+| `user-data.json` | watch progress, both favourite lists, the saved list, recently watched channels | Yes, by the export format's fingerprint | **No** — this is the viewer's own data |
+| `titles.json` | the name, artwork URL and container of every title that has been marked or played | Yes, same fingerprint | Yes |
+| `preferences.json` | destination, browsing order, volume, mute, window size, and the last category per section | Only the category map | Yes |
+| `artwork/` | posters and channel logos, one file per URL | No — a URL belongs to whoever asks for it | Yes |
+
+**`user-data.json` is an export**, in the format from `:shared` that the phone reads and writes. That
+decision buys three things at once: no schema to design or migrate, reuse of a format already built
+and tested, and interchange for nothing — this file *is* an export, so it can be handed straight to
+the phone's Import, and a file exported from the phone can be dropped in here. The cost is that a
+save rewrites the whole file; at a few thousand rows that is a couple of hundred kilobytes, written
+at most every ten seconds, which is not worth a database to avoid.
+
+**A save folds in anything it has not seen.** Nothing stops two copies of this application running
+at once, and the state file is rewritten whole on every save — so the second window to save would
+quietly take the first window's evening with it. Each save compares the file's timestamp against what
+this client last saw; if somebody else has written since, it re-reads and merges with the same
+newest-wins rule import uses, then writes that. A file belonging to a different account is not
+merged, exactly as on import.
+
+The sidecars get **no such protection, and need none**: disposability is the answer to the same
+question. Two windows fighting over the title cache costs a caption until that title is browsed
+again, and over the preferences costs the category one of them had open. Neither is a loss that
+outlives using the client, and the artwork store writes one file per image rather than replacing a
+whole document.
+
+It is deliberately a **timestamp** rather than a lock: a lock left behind by a crash is worse than
+the problem it solves, and the merge rule is idempotent, so the worst case of a missed conflict is
+the behaviour that existed before.
+
+**No credentials are in any of them.** The account is identified by the same one-way SHA-256
+fingerprint the export uses, taken over the host and username and never the password, so changing a
+password does not orphan a file. A file whose fingerprint does not match is treated as *absent*
+rather than as an error: signing in as someone else must neither show the previous account's history
+nor quietly adopt it.
+
+**Everything is written through one function**, `writeAtomically`, rather than four copies of the
+same four steps. Four copies of a rule is three chances for one to drift, and the one that drifts is
+the one nobody notices: a save that silently does nothing looks exactly like an application that
+forgot. Unifying them also fixed something all four had — a temporary file left behind when the write
+itself failed.
+
+**The rule it holds: written through a temporary file and renamed.** A half-written state file would be
+refused on the next launch and take every stored position with it, and a rename is the closest thing
+to atomic the filesystem offers. Windows refuses a rename onto an existing file, so each writer falls
+back to deleting the target and renaming again — without that, every save after the first is silently
+dropped, which is exactly the kind of failure that only shows up as "it forgot where I was".
+
+**The two caches are bounded and account-aware where the provider's ids are involved.** Names are
+scoped by fingerprint because providers number each library from one, so film 501 is a different film
+on a different account. Artwork is not: a file is named by the SHA-256 of its URL — partly because a
+URL is not a filename, and partly because provider artwork is sometimes served from the provider's
+own host and a directory listing full of readable URLs would put that host on disk in plain text. The
+directory is capped at 200MB and pruned least-recently-*read* first, with the clock injected so that
+ordering is testable rather than a race.
+
+### When the state file cannot be read
+
+Writes go through a temporary file and a rename, so a crash cannot leave half a file behind. That
+makes damage unlikely rather than impossible, and a half-synced copy or a file edited by hand arrives
+by another road entirely.
+
+An unreadable file used to be handled exactly like an absent one: the load returned an empty
+document, and the first mark afterwards wrote it back over the damaged file. Everything stored went
+with it, silently, and the evidence went in the same motion.
+
+It is **moved aside** now — renamed to `user-data.unreadable-<millis>.json` — before the empty
+document is returned, and a banner names where it went. A rename rather than a copy, because two
+files claiming to be the state is its own confusion; if the rename itself fails, nothing is moved and
+nothing is claimed.
+
+Two neighbouring cases are deliberately different. A file written by a **newer build** counts as
+unreadable, for the same reason import refuses it: it is data from the future, and replacing it with
+an empty document is the worst available answer. A file belonging to a **different account** does
+not: it is perfectly readable and simply not ours, so it is left exactly where it is.
+
+**Nothing removes a kept file but the viewer.** Each one is the only remaining copy of a history this
+client could not read, and an application that tidies away the thing it could not read has completed
+the loss it was trying to prevent — so there is no cleanup, no age limit, and deliberately no delete
+button beside them. They cannot pile up on their own either: one is written only when a load fails,
+and the next save leaves a good file behind, so a second requires fresh damage.
+
+What they *can* do is become unexplainable, which is the failure mode the atomic writer's own comment
+warns about for stray `.tmp` files. A name said once in a banner that can be dismissed is a name lost.
+So **Settings lists them** under *Your data*, with what to do: close the client, delete
+`user-data.json`, rename the kept file back.
+
+### Why the recent-channel list is not capped
+
+It looks like an oversight, so it is written down. The list holds *distinct channels* rather than
+viewings — re-watching one moves it rather than adding a row — so it grows only when somewhere new is
+watched, and a row is some forty bytes. Thousands of them are a file measured in tens of kilobytes.
+
+A cap would also fight the merge rule. Nothing is ever deleted in a merge, so trimming on write would
+simply be undone by the next import from a device that kept more, and the two would take turns
+rewriting each other. What is bounded instead is the **display** — forty, by `ownChannels` — and a
+viewer can drop one on purpose from the guide. The phone works the same way: its table is unbounded
+and the limit lives in its queries.
+
+Because none of it is ever pruned, the desktop's settings screen breaks the stored count down by
+kind. One number answers whether anything is stored; five answer which of them is growing.
+
+### Why none of this needs migrations
+
+The Room discipline above exists because a schema mismatch costs a viewer their data. Nothing here
+can:
+
+- `user-data.json` is the shared format, which is **versioned**: it ignores unknown keys so an older
+  build can read a newer file, and it **refuses** a file from a newer format version outright rather
+  than half-reading it. Its eleven tests are in `:shared`, and eleven more in `:desktop` cover this
+  client's own reading and writing of it.
+- The other three are disposable by construction. A damaged or unreadable one reads as empty, and the
+  cost is a caption, a window size, or a few seconds of re-fetching. Twenty-two tests in `:desktop`
+  pin that — twelve over the two sidecars and ten over the artwork store — including that a foreign
+  account's file reads as empty, that saving twice replaces rather than fails, and that pruning drops
+  the least recently read rather than the oldest downloaded.
+
+The rule that replaces "add a migration" here is therefore: **anything that would need one belongs in
+the export format**, where the versioning already exists, and everything else must be safe to delete.
 
 ## Planned entities
 

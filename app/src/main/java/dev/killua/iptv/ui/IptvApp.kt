@@ -52,6 +52,8 @@ import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.LiveChannel
 import dev.killua.iptv.domain.model.ResumableKind
 import dev.killua.iptv.domain.model.SessionState
+import dev.killua.iptv.domain.model.SubtitleStyle
+import dev.killua.iptv.domain.userdata.UserDataExportCodec
 import dev.killua.iptv.domain.model.ThemeMode
 import dev.killua.iptv.domain.model.VideoScaleMode
 import dev.killua.iptv.domain.model.WatchlistKind
@@ -84,7 +86,10 @@ import dev.killua.iptv.feature.settings.SettingsViewModel
 import dev.killua.iptv.feature.sync.InitialSyncRoute
 import dev.killua.iptv.feature.sync.InitialSyncViewModel
 import dev.killua.iptv.ui.theme.KilluasIptvTheme
+import dev.killua.iptv.ui.update.UpdatePrompt
 import kotlinx.coroutines.launch
+import dev.killua.iptv.ui.theme.TelevisionOverscan
+import dev.killua.iptv.ui.theme.LocalIsTelevision
 
 @Composable
 fun IptvApp(
@@ -119,6 +124,12 @@ fun IptvApp(
                 session = session,
                 isInPictureInPictureMode = isInPictureInPictureMode,
             )
+        }
+        // Over the app rather than inside a screen, so it survives navigation - and only once the
+        // viewer is actually in the app. Interrupting a sign-in, or a video already in
+        // Picture-in-Picture, to talk about a new version would be the wrong moment for it.
+        if (sessionState is SessionState.Authenticated && !isInPictureInPictureMode) {
+            UpdatePrompt(container)
         }
     }
 }
@@ -241,6 +252,19 @@ private enum class MainDestination(
     Movies("movies", "Movies", Icons.Default.Movie),
     Series("series", "Series", Icons.Default.VideoLibrary),
     Search("search", "Search", Icons.Default.Search),
+    ;
+
+    companion object {
+        /**
+         * The destinations this account has.
+         *
+         * A playlist loses **Movies** and **Series**, because an M3U has neither and a tab that can
+         * only ever be empty reads as a library that failed to load. **Search** stays: it searches
+         * what is cached, and a playlist's channels are cached like any others.
+         */
+        fun forAccount(playlist: Boolean): List<MainDestination> =
+            if (playlist) entries.filterNot { it == Movies || it == Series } else entries
+    }
 }
 
 private const val SETTINGS_ROUTE = "settings"
@@ -280,6 +304,8 @@ private fun MainRoot(
         .collectAsStateWithLifecycle(initialValue = VideoScaleMode.Fit)
     val rememberedBrightness by container.preferences.playerBrightness
         .collectAsStateWithLifecycle(initialValue = null)
+    val subtitleStyle by container.preferences.subtitleStyle
+        .collectAsStateWithLifecycle(initialValue = SubtitleStyle())
     val scope = rememberCoroutineScope()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -298,16 +324,30 @@ private fun MainRoot(
     Scaffold(
         bottomBar = {
             if (showBottomBar && !isInPictureInPictureMode) {
-                MainBottomBar(navController)
+                MainBottomBar(navController, playlistAccount = session.account.isPlaylist)
             }
         },
     ) { padding ->
+        /*
+         * The margin a television is likely to crop, applied once at the root.
+         *
+         * Not while the player is on screen: a film is meant to fill the panel, and insetting the
+         * picture would put black bars inside the black bars a television already adds. It is the
+         * *browsing* that must stay inside the safe area - a row whose first tile is off the left
+         * edge is a row a viewer cannot reach with a remote, and nothing on screen says why.
+         */
+        val overscan = if (LocalIsTelevision.current && !playerVisible) {
+            Modifier.padding(TelevisionOverscan)
+        } else {
+            Modifier
+        }
         NavHost(
             navController = navController,
             startDestination = MainDestination.Home.route,
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (playerVisible) Modifier else Modifier.padding(padding)),
+                .then(if (playerVisible) Modifier else Modifier.padding(padding))
+                .then(overscan),
         ) {
             composable(MainDestination.Home.route) {
                 val homeVm: HomeViewModel = viewModel(
@@ -490,6 +530,18 @@ private fun MainRoot(
                             preferences = container.preferences,
                             stopPlayback = container.playbackCoordinator::stopAndClear,
                             clearArtworkCache = container::clearArtworkCache,
+                            clearTrackLanguages = container::clearTrackLanguages,
+                            planUserDataImport = { accountId, document ->
+                                container.userDataImporter.plan(accountId, document)
+                            },
+                            applyUserDataImport = { accountId, plan ->
+                                container.userDataImporter.apply(accountId, plan)
+                            },
+                            buildUserDataExport = { accountId ->
+                                UserDataExportCodec.encode(
+                                    container.userDataExporter.export(accountId),
+                                )
+                            },
                         )
                     },
                 )
@@ -530,6 +582,7 @@ private fun MainRoot(
                                 connection = container.playerConnection,
                                 presentationState = container.playerPresentationState,
                                 progressWriter = container.watchProgressWriter,
+                                trackLanguageWriter = container.trackLanguageWriter,
                                 autoPlayNextEpisode = autoPlayNextEpisode,
                             )
                         },
@@ -541,6 +594,7 @@ private fun MainRoot(
                         videoScaleMode = videoScaleMode,
                         seekIncrementMs = doubleTapSeekSeconds * 1_000L,
                         holdPlaybackSpeed = holdPlaybackSpeed,
+                        subtitleStyle = subtitleStyle,
                         onVideoScaleModeChange = { mode ->
                             scope.launch { container.preferences.setVideoScaleMode(mode) }
                         },
@@ -570,11 +624,11 @@ private fun SettingsButton(modifier: Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MainBottomBar(navController: NavHostController) {
+private fun MainBottomBar(navController: NavHostController, playlistAccount: Boolean) {
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination
     NavigationBar {
-        MainDestination.entries.forEach { destination ->
+        MainDestination.forAccount(playlistAccount).forEach { destination ->
             NavigationBarItem(
                 selected = current?.hierarchy?.any { it.route == destination.route } == true,
                 onClick = {

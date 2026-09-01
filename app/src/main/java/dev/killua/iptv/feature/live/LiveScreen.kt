@@ -68,6 +68,8 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import dev.killua.iptv.domain.model.CategorySelection
 import dev.killua.iptv.domain.model.EpgEntry
+import dev.killua.iptv.ui.components.releasesFocusVertically
+import dev.killua.iptv.ui.components.focusRing
 import dev.killua.iptv.domain.model.LiveChannel
 import dev.killua.iptv.domain.model.LiveSortOrder
 
@@ -186,7 +188,10 @@ private fun SearchField(
         onValueChange = onValueChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            // A one-line box is somewhere to type, not somewhere to be stuck: see
+            // `releasesFocusVertically`, which is what lets a remote reach the list below.
+            .releasesFocusVertically(),
         singleLine = true,
         placeholder = { Text("Search channels") },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
@@ -414,8 +419,12 @@ private fun ChannelRow(
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onPlay, onLongClick = onPlay)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            // Inside the padding rather than outside it, so the ring wraps the row instead of the
+            // gap between rows. See `focusRing`: on a phone this draws nothing at all.
+            .focusRing(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onPlay, onLongClick = onPlay),
         headlineContent = {
             Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
         },

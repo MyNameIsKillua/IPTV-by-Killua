@@ -21,11 +21,15 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val container = (application as IptvApplication).container
-        val dataSourceFactory = OkHttpDataSource.Factory(container.playbackHttpClient)
-            .setUserAgent("KilluasIPTV/0.1")
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(AUTOMATIC_RETRY_COUNT))
+        // Per item rather than one for all of them: a playlist channel can name a user agent or a
+        // referrer its server insists on, and those differ from channel to channel. An Xtream item
+        // names nothing and takes the single factory this used to be.
+        val mediaSourceFactory = HeaderAwareMediaSourceFactory(
+            context = this,
+            client = container.playbackHttpClient,
+            userAgent = "KilluasIPTV/0.1",
+            retryCount = AUTOMATIC_RETRY_COUNT,
+        )
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 MIN_BUFFER_MS,

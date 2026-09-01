@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.killua.iptv.domain.epg.EpgSelection
 import dev.killua.iptv.domain.model.EpgEntry
+import dev.killua.iptv.domain.model.SubtitleStyle
 import dev.killua.iptv.domain.model.VideoScaleMode
 import dev.killua.iptv.domain.model.displayLabel
 import java.time.Instant
@@ -89,6 +90,7 @@ fun PlayerRoute(
     videoScaleMode: VideoScaleMode = VideoScaleMode.Fit,
     seekIncrementMs: Long = 10_000L,
     holdPlaybackSpeed: Float = 2f,
+    subtitleStyle: SubtitleStyle = SubtitleStyle(),
     onBack: () -> Unit,
     onPlayEpisode: (episodeId: String) -> Unit = {},
     onVideoScaleModeChange: (VideoScaleMode) -> Unit = {},
@@ -115,6 +117,7 @@ fun PlayerRoute(
         videoScaleMode = videoScaleMode,
         seekIncrementMs = seekIncrementMs,
         holdPlaybackSpeed = holdPlaybackSpeed,
+        subtitleStyle = subtitleStyle,
         onVideoScaleModeChange = onVideoScaleModeChange,
         onBrightnessSettled = onBrightnessSettled,
         onBack = onBack,
@@ -138,6 +141,7 @@ fun PlayerScreen(
     videoScaleMode: VideoScaleMode,
     seekIncrementMs: Long,
     holdPlaybackSpeed: Float,
+    subtitleStyle: SubtitleStyle = SubtitleStyle(),
     onBack: () -> Unit,
     onVideoScaleModeChange: (VideoScaleMode) -> Unit = {},
     onBrightnessSettled: (Float) -> Unit = {},
@@ -233,6 +237,9 @@ fun PlayerScreen(
                     gestureView.hideControllerAndCancelGesture()
                 }
                 gestureView.playerView.resizeMode = videoScaleMode.resizeMode
+                // Reapplied here rather than in the factory: the view outlives one episode, and a
+                // change made in Settings has to reach a player that is already on screen.
+                gestureView.playerView.applySubtitleStyle(subtitleStyle)
                 gestureView.seekIncrementMs = seekIncrementMs
                 gestureView.holdPlaybackSpeed = holdPlaybackSpeed
                 gestureView.onSeekBy = onSeekBy

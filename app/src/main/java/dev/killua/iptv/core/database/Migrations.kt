@@ -444,3 +444,24 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         db.execSQL("ALTER TABLE `accounts` ADD COLUMN `displayName` TEXT")
     }
 }
+
+/**
+ * Room 10: where a channel came from, for the libraries that are not an Xtream account.
+ *
+ * Three nullable columns and nothing else - no table rewritten, no index moved, no value
+ * backfilled. Every existing row is an Xtream channel and every one of them wants null in all
+ * three, which is what a plain `ADD COLUMN` already gives, so there is nothing for this migration
+ * to compute. That matters at the size the reference library actually is: 60,000 channels inside a
+ * ~156MB database, on a phone and now on a television stick with a fraction of its memory.
+ *
+ * Nothing writes these yet. The schema moves first for the same reason it did in Gate 3 - a column
+ * added later is a second migration on a database this large, and adding it now costs one
+ * `ALTER TABLE` per column and no rewrite at all.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `live_channels` ADD COLUMN `directSource` TEXT")
+        db.execSQL("ALTER TABLE `live_channels` ADD COLUMN `streamUserAgent` TEXT")
+        db.execSQL("ALTER TABLE `live_channels` ADD COLUMN `streamReferrer` TEXT")
+    }
+}

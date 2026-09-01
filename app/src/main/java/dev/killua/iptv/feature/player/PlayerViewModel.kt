@@ -9,6 +9,7 @@ import dev.killua.iptv.core.player.PlaybackRequest
 import dev.killua.iptv.core.player.PlaybackSnapshot
 import dev.killua.iptv.core.player.PlaybackStateSource
 import dev.killua.iptv.core.player.PlayerPresentationState
+import dev.killua.iptv.core.player.TrackLanguageWriter
 import dev.killua.iptv.core.player.WatchProgressWriter
 import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.AppFailure
@@ -75,6 +76,7 @@ class PlayerViewModel(
     private val connection: PlaybackStateSource,
     private val presentationState: PlayerPresentationState,
     private val progressWriter: WatchProgressWriter,
+    private val trackLanguageWriter: TrackLanguageWriter,
     /** Read once when the screen opens; changing it mid-episode would be a surprise. */
     private val autoPlayNextEpisode: Boolean = true,
 ) : ViewModel() {
@@ -128,7 +130,7 @@ class PlayerViewModel(
 
     fun onScreenHidden() {
         // Covers backgrounding and the PiP transition, where no explicit stop arrives.
-        checkpoint()
+        capture()
         coordinator.endTemporarySpeed()
         presentationState.hide(presentationOwner)
     }
@@ -262,8 +264,9 @@ class PlayerViewModel(
         checkpointJob?.cancel()
         // Leaving the player is a decision against the next episode too.
         cancelAutoAdvance()
-        // The position has to be read before the item is cleared; afterwards there is none.
-        checkpoint()
+        // The position and the track choice have to be read before the item is cleared;
+        // afterwards there is neither.
+        capture()
         coordinator.stopAndClear()
     }
 
@@ -273,7 +276,7 @@ class PlayerViewModel(
         } else {
             checkpointJob?.cancel()
             // A pause, a stall, or the end of the title are all worth recording immediately.
-            if (wasPlaying || snapshot.playbackState == Player.STATE_ENDED) checkpoint()
+            if (wasPlaying || snapshot.playbackState == Player.STATE_ENDED) capture()
         }
         wasPlaying = snapshot.isPlaying
         if (snapshot.playbackState == Player.STATE_ENDED) onPlaybackEnded()
@@ -319,9 +322,25 @@ class PlayerViewModel(
         checkpointJob = viewModelScope.launch {
             while (isActive) {
                 delay(CHECKPOINT_INTERVAL_MS)
-                checkpoint()
+                capture()
             }
         }
+    }
+
+    /**
+     * Reads everything worth keeping out of the live player: the watch position, and the audio or
+     * subtitle track the viewer picked by hand.
+     *
+     * Both are captures rather than callbacks, taken at moments this app chooses. They share the
+     * same moments because they have the same problem — the most valuable one is the last, and it
+     * happens while the screen is going away.
+     *
+     * Unlike the position, the track choice is captured for live channels too: a channel with two
+     * audio tracks is exactly the case where picking one every time is the annoyance.
+     */
+    private fun capture() {
+        connection.captureTrackLanguages()?.let(trackLanguageWriter::remember)
+        checkpoint()
     }
 
     /**
@@ -347,8 +366,8 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
-        // The write itself runs on an application-owned scope, so it survives this scope ending.
-        checkpoint()
+        // The writes themselves run on an application-owned scope, so they survive this one ending.
+        capture()
         coordinator.endTemporarySpeed()
         presentationState.hide(presentationOwner)
         super.onCleared()

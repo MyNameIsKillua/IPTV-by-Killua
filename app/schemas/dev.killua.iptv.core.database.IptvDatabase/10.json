@@ -1,0 +1,1144 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "c990333a67f9a186dcb695898f8fce06",
+    "entities": [
+      {
+        "tableName": "accounts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `displayName` TEXT, `status` TEXT NOT NULL, `expiresAtEpochSeconds` INTEGER, `activeConnections` INTEGER, `maximumConnections` INTEGER, `serverTimezone` TEXT, `allowedOutputFormats` TEXT NOT NULL, `lastValidatedAtEpochMillis` INTEGER NOT NULL, `lastLiveSyncAtEpochMillis` INTEGER, PRIMARY KEY(`accountId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtEpochSeconds",
+            "columnName": "expiresAtEpochSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "activeConnections",
+            "columnName": "activeConnections",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maximumConnections",
+            "columnName": "maximumConnections",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "serverTimezone",
+            "columnName": "serverTimezone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "allowedOutputFormats",
+            "columnName": "allowedOutputFormats",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastValidatedAtEpochMillis",
+            "columnName": "lastValidatedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastLiveSyncAtEpochMillis",
+            "columnName": "lastLiveSyncAtEpochMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId"
+          ]
+        }
+      },
+      {
+        "tableName": "live_categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteCategoryId` TEXT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteCategoryId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteCategoryId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_live_categories_accountId_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_categories_accountId_sortOrder` ON `${TABLE_NAME}` (`accountId`, `sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "live_channels",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `remoteCategoryId` TEXT, `name` TEXT NOT NULL, `sortName` TEXT NOT NULL, `logoUrl` TEXT, `epgChannelId` TEXT, `containerExtension` TEXT, `languageTag` TEXT, `providerOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, `directSource` TEXT, `streamUserAgent` TEXT, `streamReferrer` TEXT, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortName",
+            "columnName": "sortName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "logoUrl",
+            "columnName": "logoUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "epgChannelId",
+            "columnName": "epgChannelId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "containerExtension",
+            "columnName": "containerExtension",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "languageTag",
+            "columnName": "languageTag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "providerOrder",
+            "columnName": "providerOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "directSource",
+            "columnName": "directSource",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "streamUserAgent",
+            "columnName": "streamUserAgent",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "streamReferrer",
+            "columnName": "streamReferrer",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_live_channels_accountId_remoteCategoryId",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "remoteCategoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_remoteCategoryId` ON `${TABLE_NAME}` (`accountId`, `remoteCategoryId`)"
+          },
+          {
+            "name": "index_live_channels_accountId_providerOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "providerOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_providerOrder` ON `${TABLE_NAME}` (`accountId`, `providerOrder`)"
+          },
+          {
+            "name": "index_live_channels_accountId_sortName",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_sortName` ON `${TABLE_NAME}` (`accountId`, `sortName`)"
+          },
+          {
+            "name": "index_live_channels_accountId_languageTag",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "languageTag"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_live_channels_accountId_languageTag` ON `${TABLE_NAME}` (`accountId`, `languageTag`)"
+          }
+        ]
+      },
+      {
+        "tableName": "recent_channels",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `lastWatchedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastWatchedAtEpochMillis",
+            "columnName": "lastWatchedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_recent_channels_accountId_lastWatchedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "lastWatchedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_recent_channels_accountId_lastWatchedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `lastWatchedAtEpochMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "movie_categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteCategoryId` TEXT NOT NULL, `name` TEXT NOT NULL, `languageTag` TEXT, `sortOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteCategoryId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "languageTag",
+            "columnName": "languageTag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteCategoryId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_movie_categories_accountId_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movie_categories_accountId_sortOrder` ON `${TABLE_NAME}` (`accountId`, `sortOrder`)"
+          },
+          {
+            "name": "index_movie_categories_accountId_languageTag",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "languageTag"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movie_categories_accountId_languageTag` ON `${TABLE_NAME}` (`accountId`, `languageTag`)"
+          }
+        ]
+      },
+      {
+        "tableName": "movies",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `remoteCategoryId` TEXT, `name` TEXT NOT NULL, `sortName` TEXT NOT NULL, `posterUrl` TEXT, `containerExtension` TEXT, `rating` REAL, `releaseYear` INTEGER, `addedAtEpochSeconds` INTEGER, `languageTag` TEXT, `providerOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortName",
+            "columnName": "sortName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posterUrl",
+            "columnName": "posterUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "containerExtension",
+            "columnName": "containerExtension",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rating",
+            "columnName": "rating",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "releaseYear",
+            "columnName": "releaseYear",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "addedAtEpochSeconds",
+            "columnName": "addedAtEpochSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "languageTag",
+            "columnName": "languageTag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "providerOrder",
+            "columnName": "providerOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_movies_accountId_remoteCategoryId",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "remoteCategoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_remoteCategoryId` ON `${TABLE_NAME}` (`accountId`, `remoteCategoryId`)"
+          },
+          {
+            "name": "index_movies_accountId_providerOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "providerOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_providerOrder` ON `${TABLE_NAME}` (`accountId`, `providerOrder`)"
+          },
+          {
+            "name": "index_movies_accountId_sortName",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_sortName` ON `${TABLE_NAME}` (`accountId`, `sortName`)"
+          },
+          {
+            "name": "index_movies_accountId_rating",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "rating"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_rating` ON `${TABLE_NAME}` (`accountId`, `rating`)"
+          },
+          {
+            "name": "index_movies_accountId_releaseYear",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "releaseYear"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_releaseYear` ON `${TABLE_NAME}` (`accountId`, `releaseYear`)"
+          },
+          {
+            "name": "index_movies_accountId_addedAtEpochSeconds",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "addedAtEpochSeconds"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_addedAtEpochSeconds` ON `${TABLE_NAME}` (`accountId`, `addedAtEpochSeconds`)"
+          },
+          {
+            "name": "index_movies_accountId_languageTag",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "languageTag"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movies_accountId_languageTag` ON `${TABLE_NAME}` (`accountId`, `languageTag`)"
+          }
+        ]
+      },
+      {
+        "tableName": "movie_details",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `plot` TEXT, `genre` TEXT, `cast` TEXT, `director` TEXT, `backdropUrl` TEXT, `durationSeconds` INTEGER, `fetchedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plot",
+            "columnName": "plot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "genre",
+            "columnName": "genre",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cast",
+            "columnName": "cast",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "director",
+            "columnName": "director",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "backdropUrl",
+            "columnName": "backdropUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fetchedAtEpochMillis",
+            "columnName": "fetchedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        }
+      },
+      {
+        "tableName": "movie_favorites",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteStreamId` TEXT NOT NULL, `favoritedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteStreamId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteStreamId",
+            "columnName": "remoteStreamId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "favoritedAtEpochMillis",
+            "columnName": "favoritedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteStreamId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_movie_favorites_accountId_favoritedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "favoritedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movie_favorites_accountId_favoritedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `favoritedAtEpochMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "series_categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteCategoryId` TEXT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteCategoryId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteCategoryId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_series_categories_accountId_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_categories_accountId_sortOrder` ON `${TABLE_NAME}` (`accountId`, `sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "series",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteSeriesId` TEXT NOT NULL, `remoteCategoryId` TEXT, `name` TEXT NOT NULL, `sortName` TEXT NOT NULL, `posterUrl` TEXT, `rating` REAL, `releaseYear` INTEGER, `lastModifiedEpochSeconds` INTEGER, `languageTag` TEXT, `providerOrder` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteSeriesId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteSeriesId",
+            "columnName": "remoteSeriesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteCategoryId",
+            "columnName": "remoteCategoryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortName",
+            "columnName": "sortName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posterUrl",
+            "columnName": "posterUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rating",
+            "columnName": "rating",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "releaseYear",
+            "columnName": "releaseYear",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastModifiedEpochSeconds",
+            "columnName": "lastModifiedEpochSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "languageTag",
+            "columnName": "languageTag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "providerOrder",
+            "columnName": "providerOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteSeriesId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_series_accountId_remoteCategoryId",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "remoteCategoryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_remoteCategoryId` ON `${TABLE_NAME}` (`accountId`, `remoteCategoryId`)"
+          },
+          {
+            "name": "index_series_accountId_providerOrder",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "providerOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_providerOrder` ON `${TABLE_NAME}` (`accountId`, `providerOrder`)"
+          },
+          {
+            "name": "index_series_accountId_sortName",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "sortName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_sortName` ON `${TABLE_NAME}` (`accountId`, `sortName`)"
+          },
+          {
+            "name": "index_series_accountId_rating",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "rating"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_rating` ON `${TABLE_NAME}` (`accountId`, `rating`)"
+          },
+          {
+            "name": "index_series_accountId_releaseYear",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "releaseYear"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_releaseYear` ON `${TABLE_NAME}` (`accountId`, `releaseYear`)"
+          },
+          {
+            "name": "index_series_accountId_lastModifiedEpochSeconds",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "lastModifiedEpochSeconds"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_lastModifiedEpochSeconds` ON `${TABLE_NAME}` (`accountId`, `lastModifiedEpochSeconds`)"
+          },
+          {
+            "name": "index_series_accountId_languageTag",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "languageTag"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_accountId_languageTag` ON `${TABLE_NAME}` (`accountId`, `languageTag`)"
+          }
+        ]
+      },
+      {
+        "tableName": "series_details",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteSeriesId` TEXT NOT NULL, `plot` TEXT, `genre` TEXT, `cast` TEXT, `director` TEXT, `backdropUrl` TEXT, `fetchedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteSeriesId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteSeriesId",
+            "columnName": "remoteSeriesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plot",
+            "columnName": "plot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "genre",
+            "columnName": "genre",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cast",
+            "columnName": "cast",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "director",
+            "columnName": "director",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "backdropUrl",
+            "columnName": "backdropUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fetchedAtEpochMillis",
+            "columnName": "fetchedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteSeriesId"
+          ]
+        }
+      },
+      {
+        "tableName": "series_episodes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteEpisodeId` TEXT NOT NULL, `remoteSeriesId` TEXT NOT NULL, `seasonNumber` INTEGER NOT NULL, `episodeNumber` INTEGER, `title` TEXT NOT NULL, `containerExtension` TEXT, `durationSeconds` INTEGER, `plot` TEXT, `stillUrl` TEXT, PRIMARY KEY(`accountId`, `remoteEpisodeId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteEpisodeId",
+            "columnName": "remoteEpisodeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteSeriesId",
+            "columnName": "remoteSeriesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seasonNumber",
+            "columnName": "seasonNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "episodeNumber",
+            "columnName": "episodeNumber",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "containerExtension",
+            "columnName": "containerExtension",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "plot",
+            "columnName": "plot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "stillUrl",
+            "columnName": "stillUrl",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteEpisodeId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_series_episodes_accountId_remoteSeriesId_seasonNumber_episodeNumber",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "remoteSeriesId",
+              "seasonNumber",
+              "episodeNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_episodes_accountId_remoteSeriesId_seasonNumber_episodeNumber` ON `${TABLE_NAME}` (`accountId`, `remoteSeriesId`, `seasonNumber`, `episodeNumber`)"
+          }
+        ]
+      },
+      {
+        "tableName": "series_favorites",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `remoteSeriesId` TEXT NOT NULL, `favoritedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `remoteSeriesId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteSeriesId",
+            "columnName": "remoteSeriesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "favoritedAtEpochMillis",
+            "columnName": "favoritedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "remoteSeriesId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_series_favorites_accountId_favoritedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "favoritedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_series_favorites_accountId_favoritedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `favoritedAtEpochMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "watch_progress",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `contentType` TEXT NOT NULL, `contentId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, `updatedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `contentType`, `contentId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentType",
+            "columnName": "contentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentId",
+            "columnName": "contentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionMs",
+            "columnName": "positionMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updatedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "contentType",
+            "contentId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_watch_progress_accountId_contentType_updatedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "contentType",
+              "updatedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_watch_progress_accountId_contentType_updatedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `contentType`, `updatedAtEpochMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "watchlist",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountId` TEXT NOT NULL, `contentType` TEXT NOT NULL, `contentId` TEXT NOT NULL, `addedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`accountId`, `contentType`, `contentId`))",
+        "fields": [
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentType",
+            "columnName": "contentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentId",
+            "columnName": "contentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAtEpochMillis",
+            "columnName": "addedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountId",
+            "contentType",
+            "contentId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_watchlist_accountId_addedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "accountId",
+              "addedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_watchlist_accountId_addedAtEpochMillis` ON `${TABLE_NAME}` (`accountId`, `addedAtEpochMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c990333a67f9a186dcb695898f8fce06')"
+    ]
+  }
+}

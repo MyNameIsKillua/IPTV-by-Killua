@@ -1,5 +1,9 @@
 package dev.killua.iptv.feature.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +23,22 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.ClosedCaption
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.PictureInPicture
 import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,17 +59,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.killua.iptv.core.preferences.PlaybackGestureOptions
 import dev.killua.iptv.domain.model.Account
+import dev.killua.iptv.domain.model.SubtitleBackground
+import dev.killua.iptv.domain.model.SubtitleStyle
+import dev.killua.iptv.domain.model.SubtitleTextSize
 import dev.killua.iptv.domain.model.ThemeMode
+import dev.killua.iptv.domain.model.TrackLanguagePreferences
+import dev.killua.iptv.domain.model.languageDisplayName
+import dev.killua.iptv.domain.support.CryptoAddress
+import dev.killua.iptv.domain.support.Donations
+import dev.killua.iptv.domain.userdata.UserDataImportPlan
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -64,17 +95,80 @@ fun SettingsRoute(viewModel: SettingsViewModel) {
     val theme by viewModel.themeMode.collectAsStateWithLifecycle()
     val pip by viewModel.pictureInPictureEnabled.collectAsStateWithLifecycle()
     val autoPlayNext by viewModel.autoPlayNextEpisode.collectAsStateWithLifecycle()
+    val updateCheck by viewModel.updateCheckEnabled.collectAsStateWithLifecycle()
     val doubleTapSeekSeconds by viewModel.doubleTapSeekSeconds.collectAsStateWithLifecycle()
     val holdPlaybackSpeed by viewModel.holdPlaybackSpeed.collectAsStateWithLifecycle()
+    val trackLanguages by viewModel.trackLanguages.collectAsStateWithLifecycle()
+    val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The system picker creates the document, so no storage permission is involved and the viewer
+    // chooses where it lands - a folder their own cloud already syncs, if they want one.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportUserData { document ->
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(document.toByteArray())
+                    } ?: error("the picked document could not be opened")
+                }
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val document = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            // Bounded on purpose: the viewer can pick any document, and reading an
+                            // arbitrary one into memory unbounded is how an app dies. Read in a
+                            // plain loop rather than with readNBytes, which is a Java 9 API this
+                            // project cannot assume on its minimum Android version.
+                            val collected = ByteArrayOutputStream()
+                            val chunk = ByteArray(64 * 1024)
+                            var oversized = false
+                            while (true) {
+                                val read = stream.read(chunk)
+                                if (read <= 0) break
+                                if (collected.size() + read > MAX_IMPORT_BYTES) {
+                                    oversized = true
+                                    break
+                                }
+                                collected.write(chunk, 0, read)
+                            }
+                            if (oversized) null else collected.toString(Charsets.UTF_8.name())
+                        }
+                    }
+                }.getOrNull()
+                if (document == null) viewModel.reportImportUnreadable() else viewModel.prepareUserDataImport(document)
+            }
+        }
+    }
     SettingsScreen(
         state = state,
         themeMode = theme,
         pictureInPictureEnabled = pip,
         autoPlayNextEpisode = autoPlayNext,
+        updateCheckEnabled = updateCheck,
         doubleTapSeekSeconds = doubleTapSeekSeconds,
         holdPlaybackSpeed = holdPlaybackSpeed,
+        trackLanguages = trackLanguages,
+        subtitleStyle = subtitleStyle,
+        onClearTrackLanguages = viewModel::clearTrackLanguages,
+        onExportUserData = { exportLauncher.launch(suggestedExportFileName()) },
+        onImportUserData = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+        onConfirmImport = viewModel::confirmUserDataImport,
+        onCancelImport = viewModel::cancelUserDataImport,
+        onSubtitleTextSizeChange = viewModel::setSubtitleTextSize,
+        onSubtitleBackgroundChange = viewModel::setSubtitleBackground,
         onThemeChange = viewModel::setTheme,
         onPipChange = viewModel::setPictureInPicture,
+        onUpdateCheckChange = viewModel::setUpdateCheckEnabled,
         onAutoPlayNextChange = viewModel::setAutoPlayNextEpisode,
         onDoubleTapSeekChange = viewModel::setDoubleTapSeekSeconds,
         onHoldPlaybackSpeedChange = viewModel::setHoldPlaybackSpeed,
@@ -125,11 +219,22 @@ fun SettingsScreen(
     state: SettingsUiState,
     themeMode: ThemeMode,
     pictureInPictureEnabled: Boolean,
+    updateCheckEnabled: Boolean,
     autoPlayNextEpisode: Boolean,
     doubleTapSeekSeconds: Int,
     holdPlaybackSpeed: Float,
+    trackLanguages: TrackLanguagePreferences,
+    subtitleStyle: SubtitleStyle,
+    onClearTrackLanguages: () -> Unit,
+    onExportUserData: () -> Unit,
+    onImportUserData: () -> Unit,
+    onConfirmImport: () -> Unit,
+    onCancelImport: () -> Unit,
+    onSubtitleTextSizeChange: (SubtitleTextSize) -> Unit,
+    onSubtitleBackgroundChange: (SubtitleBackground) -> Unit,
     onThemeChange: (ThemeMode) -> Unit,
     onPipChange: (Boolean) -> Unit,
+    onUpdateCheckChange: (Boolean) -> Unit,
     onAutoPlayNextChange: (Boolean) -> Unit,
     onDoubleTapSeekChange: (Int) -> Unit,
     onHoldPlaybackSpeedChange: (Float) -> Unit,
@@ -143,7 +248,44 @@ fun SettingsScreen(
     var renaming by remember { mutableStateOf(false) }
     var showSeekOptions by remember { mutableStateOf(false) }
     var showSpeedOptions by remember { mutableStateOf(false) }
+    var showSubtitleSizeOptions by remember { mutableStateOf(false) }
+    var showSubtitleBackgroundOptions by remember { mutableStateOf(false) }
 
+    state.pendingImport?.let { plan ->
+        AlertDialog(
+            onDismissRequest = onCancelImport,
+            title = { Text("Import this file?") },
+            text = { Text(importSummary(plan)) },
+            confirmButton = { TextButton(onClick = onConfirmImport) { Text("Import") } },
+            dismissButton = { TextButton(onClick = onCancelImport) { Text("Cancel") } },
+        )
+    }
+    if (showSubtitleSizeOptions) {
+        ChoiceDialog(
+            title = "Subtitle size",
+            options = SubtitleTextSize.entries,
+            selected = subtitleStyle.textSize,
+            label = SubtitleTextSize::label,
+            onSelect = {
+                onSubtitleTextSizeChange(it)
+                showSubtitleSizeOptions = false
+            },
+            onDismiss = { showSubtitleSizeOptions = false },
+        )
+    }
+    if (showSubtitleBackgroundOptions) {
+        ChoiceDialog(
+            title = "Subtitle background",
+            options = SubtitleBackground.entries,
+            selected = subtitleStyle.background,
+            label = SubtitleBackground::label,
+            onSelect = {
+                onSubtitleBackgroundChange(it)
+                showSubtitleBackgroundOptions = false
+            },
+            onDismiss = { showSubtitleBackgroundOptions = false },
+        )
+    }
     if (showSeekOptions) {
         ChoiceDialog(
             title = "Double-tap skip",
@@ -259,6 +401,38 @@ fun SettingsScreen(
                     modifier = Modifier.clickable(enabled = !state.isRefreshing, onClick = onRefresh),
                 )
             }
+            item {
+                ListItem(
+                    headlineContent = { Text("Export your data") },
+                    supportingContent = {
+                        Text(
+                            "Save watch progress, favourites, your list and recent channels to a " +
+                                "file. No password or server address is written into it.",
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Outlined.FileDownload, null) },
+                    trailingContent = {
+                        if (state.isExporting) CircularProgressIndicator(Modifier.padding(8.dp))
+                    },
+                    modifier = Modifier.clickable(enabled = !state.isExporting, onClick = onExportUserData),
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Import data") },
+                    supportingContent = {
+                        Text(
+                            "Read a file exported from this or another device. Entries are merged, " +
+                                "the newer one wins, and nothing is ever removed.",
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Outlined.FileUpload, null) },
+                    trailingContent = {
+                        if (state.isImporting) CircularProgressIndicator(Modifier.padding(8.dp))
+                    },
+                    modifier = Modifier.clickable(enabled = !state.isImporting, onClick = onImportUserData),
+                )
+            }
             item { SectionTitle("Playback") }
             item {
                 ListItem(
@@ -282,6 +456,34 @@ fun SettingsScreen(
                         Switch(checked = autoPlayNextEpisode, onCheckedChange = onAutoPlayNextChange)
                     },
                     modifier = Modifier.clickable { onAutoPlayNextChange(!autoPlayNextEpisode) },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Audio and subtitle language") },
+                    supportingContent = { Text(trackLanguageSummary(trackLanguages)) },
+                    leadingContent = { Icon(Icons.Outlined.Translate, null) },
+                    trailingContent = {
+                        if (!trackLanguages.isEmpty) {
+                            TextButton(onClick = onClearTrackLanguages) { Text("Clear") }
+                        }
+                    },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Subtitle size") },
+                    supportingContent = { Text(subtitleSizeSummary(subtitleStyle.textSize)) },
+                    leadingContent = { Icon(Icons.Outlined.FormatSize, null) },
+                    modifier = Modifier.clickable { showSubtitleSizeOptions = true },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Subtitle background") },
+                    supportingContent = { Text(subtitleBackgroundSummary(subtitleStyle.background)) },
+                    leadingContent = { Icon(Icons.Outlined.ClosedCaption, null) },
+                    modifier = Modifier.clickable { showSubtitleBackgroundOptions = true },
                 )
             }
             item {
@@ -344,6 +546,30 @@ fun SettingsScreen(
                     leadingContent = { Icon(Icons.Outlined.Info, null) },
                 )
             }
+            item { SectionTitle("Updates") }
+            item {
+                ListItem(
+                    headlineContent = { Text("Check for updates") },
+                    supportingContent = {
+                        // The reason sits next to the switch, not only in a document nobody opens.
+                        // This is the app's only automatic request to anyone but your provider, so
+                        // what it costs should be readable at the moment you decide about it.
+                        Text(
+                            "Ask GitHub once a day whether a newer version exists. The request " +
+                                "sends nothing about you, your account, or what you watch — but " +
+                                "GitHub sees your IP address, as it would for any web page. " +
+                                "Turned off, the app never contacts it.",
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Outlined.SystemUpdate, null) },
+                    trailingContent = {
+                        Switch(checked = updateCheckEnabled, onCheckedChange = onUpdateCheckChange)
+                    },
+                    modifier = Modifier.clickable { onUpdateCheckChange(!updateCheckEnabled) },
+                )
+            }
+            item { SectionTitle("Support") }
+            item { SupportSection() }
             item {
                 Button(
                     onClick = { confirmLogout = true },
@@ -406,8 +632,74 @@ private fun <T> ChoiceDialog(
 private fun formatSeekInterval(seconds: Int): String =
     if (seconds == 60) "1 minute" else "$seconds seconds"
 
+/**
+ * Names what an import would actually change, rather than how much the file holds.
+ *
+ * A file can be large and change nothing, so counting its contents would overstate what is about to
+ * happen. Only rows that would move are listed.
+ */
+private fun importSummary(plan: UserDataImportPlan.Ready): String {
+    val parts = buildList {
+        if (plan.progress.isNotEmpty()) add("${plan.progress.size} watch positions")
+        val favourites = plan.movieFavorites.size + plan.seriesFavorites.size
+        if (favourites > 0) add("$favourites favourites")
+        if (plan.watchlist.isNotEmpty()) add("${plan.watchlist.size} saved items")
+        if (plan.recentChannels.isNotEmpty()) add("${plan.recentChannels.size} recent channels")
+    }
+    return parts.joinToString(", ") +
+        ". Existing entries are only replaced when the file has a newer one, and nothing is removed."
+}
+
+/** Dated, so successive exports sit beside each other rather than overwriting one another. */
+private fun suggestedExportFileName(): String =
+    "killua-iptv-data-" + LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE) + ".json"
+
 private fun formatPlaybackSpeed(speed: Float): String =
     if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x"
+
+/**
+ * Describes what the player will pick on its own next time.
+ *
+ * Deliberately says where the choice is made, because nothing on this screen makes it: the row
+ * reports and clears, and the track menu in the player is what fills it.
+ */
+private fun trackLanguageSummary(languages: TrackLanguagePreferences): String {
+    if (languages.isEmpty) {
+        return "Not set. Choose a track in the player and it is used for what you watch next."
+    }
+    // Read into a local first: `subtitleLanguage` now lives in :shared, and Kotlin will not smart
+    // cast a public property from another module.
+    val subtitleLanguage = languages.subtitleLanguage
+    val parts = buildList {
+        languages.audioLanguage?.let { add("Audio: ${languageDisplayName(it)}") }
+        when {
+            languages.subtitlesDisabled -> add("Subtitles: off")
+            subtitleLanguage != null -> add("Subtitles: ${languageDisplayName(subtitleLanguage)}")
+        }
+    }
+    return parts.joinToString(" · ") + ". Used when a stream carries it."
+}
+
+/**
+ * Both subtitle rows name the choice and then what it means, because neither is self-evident and
+ * there is no preview on this screen to fall back on.
+ *
+ * A preview is deliberately absent: the chosen size is a fraction of the **player's** height, so a
+ * sample drawn in a settings list would be a different size than the real thing and would mislead
+ * about the one property being set.
+ */
+private fun subtitleSizeSummary(size: SubtitleTextSize): String = when (size) {
+    SubtitleTextSize.System -> "${size.label}. Follows Android's caption size."
+    else -> "${size.label}. A fixed share of the picture height."
+}
+
+private fun subtitleBackgroundSummary(background: SubtitleBackground): String = when (background) {
+    SubtitleBackground.System -> "${background.label}. Follows Android's caption style."
+    SubtitleBackground.None -> "${background.label}. Nothing behind the text."
+    SubtitleBackground.Shadow -> "${background.label}. A soft edge behind the letters."
+    SubtitleBackground.Outline -> "${background.label}. A hard edge around the letters."
+    SubtitleBackground.Box -> "${background.label}. A dark box behind the text."
+}
 
 @Composable
 private fun AccountCard(account: Account) {
@@ -443,6 +735,105 @@ private fun AccountCard(account: Account) {
     }
 }
 
+/**
+ * The one place the app asks for anything, and it asks quietly.
+ *
+ * Deliberately a row like any other rather than a banner: this is a client for an account the
+ * viewer already pays someone else for, so a donation prompt that pushes would be asking for money
+ * twice. The wording says what the money is for - the work on the app - because an IPTV client
+ * that is vague about that is an IPTV client that reads as selling access to something. It is not.
+ *
+ * Nothing here takes a payment. It opens a page, or hands over an address, and stops.
+ */
+@Composable
+private fun SupportSection() {
+    val context = LocalContext.current
+    // The failure this is written for is a television. A Fire TV Stick frequently has no browser
+    // installed at all, and there ACTION_VIEW throws rather than quietly doing nothing - so the
+    // fallback is to put the address on screen where it can be read off and typed elsewhere.
+    var showAddress by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        ListItem(
+            headlineContent = { Text("Support development") },
+            supportingContent = {
+                Text("Entirely optional. It supports work on the app and unlocks nothing.")
+            },
+            leadingContent = { Icon(Icons.Outlined.FavoriteBorder, null) },
+            trailingContent = { Icon(Icons.Outlined.OpenInNew, null) },
+            modifier = Modifier.clickable {
+                val opened = runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Donations.KO_FI_URL.toUri())
+                            // Its own task, so leaving the browser comes back here rather than
+                            // into this app's back stack - and so a non-Activity context cannot
+                            // turn this into a crash.
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }.isSuccess
+                if (!opened) showAddress = true
+            },
+        )
+        if (showAddress) {
+            ListItem(
+                headlineContent = { Text(Donations.KO_FI_LABEL) },
+                supportingContent = { Text("No browser on this device. Open it elsewhere.") },
+                leadingContent = { Icon(Icons.Outlined.ContentCopy, null) },
+                modifier = Modifier.clickable {
+                    copyToClipboard(context, label = "Ko-fi", text = Donations.KO_FI_URL)
+                },
+            )
+        }
+        // Only the addresses that passed Donations' rule, which is why there is no check here: an
+        // address that is a placeholder, damaged, or a token contract never arrives in this list.
+        Donations.coins.forEach { coin -> CryptoRow(coin) }
+    }
+}
+
+/** One coin, copied rather than typed, because nobody types a wallet address correctly. */
+@Composable
+private fun CryptoRow(coin: CryptoAddress) {
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+
+    ListItem(
+        headlineContent = { Text("${coin.coin} (${coin.ticker})") },
+        supportingContent = {
+            Column {
+                Text(
+                    if (copied) "Address copied" else coin.address,
+                    // The address is long and this is a phone. Cutting it in the middle would hide
+                    // the end, which is the half a person checks after pasting.
+                    maxLines = 2,
+                )
+                // The network matters as much as the address: sending on a chain this account
+                // cannot be reached on loses the money just as completely as a wrong address.
+                coin.note?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        leadingContent = { Icon(Icons.Outlined.ContentCopy, null) },
+        modifier = Modifier.clickable {
+            copyToClipboard(context, label = "${coin.coin} address", text = coin.address)
+            copied = true
+        },
+    )
+}
+
+/**
+ * The platform clipboard rather than Compose's, which is deprecated in this Compose version.
+ *
+ * Failure is swallowed on purpose: a clipboard that refuses is a device-policy decision, not
+ * something to interrupt a settings screen over.
+ */
+private fun copyToClipboard(context: Context, label: String, text: String) {
+    runCatching {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    }
+}
+
 @Composable
 private fun SectionTitle(title: String) {
     Text(
@@ -470,3 +861,6 @@ private fun formatEpochSeconds(epochSeconds: Long): String =
 
 private fun formatEpochMillis(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(dateFormatter)
+
+/** 32 MB. An export of a six-figure library is a small fraction of this. */
+private const val MAX_IMPORT_BYTES = 32 * 1024 * 1024

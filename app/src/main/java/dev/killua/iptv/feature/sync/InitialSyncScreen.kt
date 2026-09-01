@@ -88,26 +88,31 @@ fun InitialSyncScreen(
             )
             Spacer(Modifier.height(28.dp))
 
-            SyncStepRow(
-                label = "Live channels",
-                step = SyncStep.Channels,
-                state = state,
-                icon = { Icon(Icons.Outlined.LiveTv, null, Modifier.size(20.dp)) },
-            )
-            Spacer(Modifier.height(14.dp))
-            SyncStepRow(
-                label = "Movies",
-                step = SyncStep.Movies,
-                state = state,
-                icon = { Icon(Icons.Outlined.Movie, null, Modifier.size(20.dp)) },
-            )
-            Spacer(Modifier.height(14.dp))
-            SyncStepRow(
-                label = "Series",
-                step = SyncStep.Series,
-                state = state,
-                icon = { Icon(Icons.Outlined.VideoLibrary, null, Modifier.size(20.dp)) },
-            )
+            // One row per library this account actually has. A playlist has one, and its two
+            // missing rows are absent rather than instantly ticked - a row that appears and
+            // completes in the same frame claims something happened when nothing did.
+            state.steps.forEachIndexed { index, step ->
+                if (index > 0) Spacer(Modifier.height(14.dp))
+                SyncStepRow(
+                    label = when (step) {
+                        SyncStep.Channels -> "Live channels"
+                        SyncStep.Movies -> "Movies"
+                        SyncStep.Series -> "Series"
+                    },
+                    step = step,
+                    state = state,
+                    icon = {
+                        when (step) {
+                            SyncStep.Channels ->
+                                Icon(Icons.Outlined.LiveTv, null, Modifier.size(20.dp))
+                            SyncStep.Movies ->
+                                Icon(Icons.Outlined.Movie, null, Modifier.size(20.dp))
+                            SyncStep.Series ->
+                                Icon(Icons.Outlined.VideoLibrary, null, Modifier.size(20.dp))
+                        }
+                    },
+                )
+            }
 
             if (state.isRunning) {
                 Spacer(Modifier.height(24.dp))

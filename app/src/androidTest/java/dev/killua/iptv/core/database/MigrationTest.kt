@@ -520,6 +520,65 @@ class MigrationTest {
     }
 
     @Test
+    fun migrate9To10_addsThePlaylistColumnsAndLeavesEveryChannelAlone() {
+        helper.createDatabase(TEST_DB, 9).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO live_channels (
+                    accountId, remoteStreamId, remoteCategoryId, name, sortName, logoUrl,
+                    epgChannelId, containerExtension, languageTag, providerOrder, syncGeneration
+                ) VALUES ('account-1', '77', '5', 'DE | Beispiel HD', 'de | beispiel hd', NULL,
+                          'beispiel.de', 'ts', 'de', 3, 42)
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 10, true, MIGRATION_9_10)
+
+        // The row that was already there is untouched, and its three new columns are empty rather
+        // than filled with a guess: every channel from before this schema is an Xtream channel,
+        // whose address is built at playback time and never stored.
+        db.query(
+            """
+            SELECT name, sortName, languageTag, providerOrder,
+                   directSource, streamUserAgent, streamReferrer
+            FROM live_channels WHERE remoteStreamId = '77'
+            """.trimIndent(),
+        ).use { cursor ->
+            assertThat(cursor.moveToFirst()).isTrue()
+            assertThat(cursor.getString(0)).isEqualTo("DE | Beispiel HD")
+            assertThat(cursor.getString(1)).isEqualTo("de | beispiel hd")
+            assertThat(cursor.getString(2)).isEqualTo("de")
+            assertThat(cursor.getInt(3)).isEqualTo(3)
+            assertThat(cursor.isNull(4)).isTrue()
+            assertThat(cursor.isNull(5)).isTrue()
+            assertThat(cursor.isNull(6)).isTrue()
+        }
+
+        // And a playlist channel can be written into the same table beside it.
+        db.execSQL(
+            """
+            INSERT INTO live_channels (
+                accountId, remoteStreamId, remoteCategoryId, name, sortName, logoUrl,
+                epgChannelId, containerExtension, languageTag, providerOrder, syncGeneration,
+                directSource, streamUserAgent, streamReferrer
+            ) VALUES ('account-1', 'abc123', 'News', 'Beispiel News', 'beispiel news', NULL,
+                      NULL, 'm3u8', NULL, 4, 42,
+                      'https://stream.example/a.m3u8', 'Mozilla/5.0', 'https://portal.example/')
+            """.trimIndent(),
+        )
+        db.query(
+            "SELECT directSource, streamUserAgent, streamReferrer FROM live_channels " +
+                "WHERE remoteStreamId = 'abc123'",
+        ).use { cursor ->
+            assertThat(cursor.moveToFirst()).isTrue()
+            assertThat(cursor.getString(0)).isEqualTo("https://stream.example/a.m3u8")
+            assertThat(cursor.getString(1)).isEqualTo("Mozilla/5.0")
+            assertThat(cursor.getString(2)).isEqualTo("https://portal.example/")
+        }
+    }
+
+    @Test
     fun migrate1To8_runsEveryStepInSequence() {
         helper.createDatabase(TEST_DB, 1).use { db ->
             db.execSQL(

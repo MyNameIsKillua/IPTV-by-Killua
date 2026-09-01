@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import dev.killua.iptv.domain.model.LibrarySource
 
 /**
  * Deterministic in-memory doubles for the account-scoped write path. They contain no real
@@ -97,6 +98,9 @@ object UnusedSessionRepository : SessionRepository {
         displayName: String,
     ): Account = unsupported()
 
+    override suspend fun loginWithPlaylist(url: String, displayName: String): Account =
+        error("Playlists are not part of these tests")
+
     override suspend fun reconnect(): Account = unsupported()
 
     override suspend fun credentialsFor(accountId: String): XtreamCredentials = unsupported()
@@ -129,22 +133,38 @@ class RecordingTransactionRunner : TransactionRunner {
 class FakeCredentialVault(
     var accountId: String? = null,
     var serverUrl: String = "https://provider.example/",
+    /** Which of the two listings this account has; see `LiveListingSource`. */
+    var source: LibrarySource = LibrarySource.Xtream,
 ) : CredentialVault {
-    override suspend fun load(): XtreamCredentials? = accountId?.let {
+    /**
+     * What was last written here, when something wrote.
+     *
+     * It used to remember only the account id and rebuild the rest from the fields above, which
+     * made it useless for asking what a sign-in actually stored - a test could not tell a playlist
+     * account from an Xtream one, because the answer came from the test's own default rather than
+     * from the code under test.
+     */
+    private var saved: XtreamCredentials? = null
+
+    override suspend fun load(): XtreamCredentials? = saved ?: accountId?.let {
         XtreamCredentials(
             accountId = it,
             serverUrl = serverUrl,
-            username = "demo-user",
-            password = "demo-pass",
+            // A playlist has neither, and the address it reads is the server URL above.
+            username = if (source == LibrarySource.Playlist) "" else "demo-user",
+            password = if (source == LibrarySource.Playlist) "" else "demo-pass",
+            source = source,
         )
     }
 
     override suspend fun save(credentials: XtreamCredentials) {
         accountId = credentials.accountId
+        saved = credentials
     }
 
     override suspend fun clear() {
         accountId = null
+        saved = null
     }
 }
 

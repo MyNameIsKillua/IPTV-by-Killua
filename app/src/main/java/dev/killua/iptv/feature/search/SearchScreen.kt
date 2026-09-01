@@ -50,6 +50,7 @@ import dev.killua.iptv.domain.model.LiveChannel
 import dev.killua.iptv.domain.model.MovieSummary
 import dev.killua.iptv.domain.model.SearchSection
 import dev.killua.iptv.domain.model.SeriesSummary
+import dev.killua.iptv.ui.components.releasesFocusVertically
 import dev.killua.iptv.ui.components.POSTER_ASPECT_RATIO
 
 @Composable
@@ -98,7 +99,8 @@ fun SearchScreen(
             onValueChange = onInput,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .releasesFocusVertically(),
             singleLine = true,
             placeholder = { Text("Channels, movies and series") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },

@@ -1,0 +1,15 @@
+# Adds the "Sponsor" button to this repository's page.
+#
+# It only appears on a public repository, so on this private one the file changes nothing. It is
+# here so that it is already right if the project is ever published.
+#
+# Nothing here unlocks anything in the app. It supports the work on the app, which is the only
+# thing this project has to offer.
+
+ko_fi: mynameiskillua
+
+# Crypto has no key of its own here. It would go under `custom` as a link to a page listing the
+# addresses; the addresses themselves live in `Donations` in the shared module and are rendered in
+# the README under "Support". Left commented until there is a public page to point at - a `custom`
+# entry resolving to nothing is a Sponsor button that goes nowhere.
+# custom: ["https://example.com/donate"]

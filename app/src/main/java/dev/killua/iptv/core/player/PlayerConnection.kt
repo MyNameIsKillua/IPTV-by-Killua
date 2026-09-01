@@ -15,6 +15,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import dev.killua.iptv.domain.model.AppFailure
 import dev.killua.iptv.domain.model.AppFailureException
 import dev.killua.iptv.domain.model.FailureKind
+import dev.killua.iptv.domain.model.TrackLanguagePreferences
+import dev.killua.iptv.domain.model.TrackLanguageSelection
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,6 +71,20 @@ class PlayerConnection(
             durationMs = if (duration == C.TIME_UNSET || duration < 0L) 0L else duration,
             hasEnded = connected.playbackState == Player.STATE_ENDED,
         )
+    }
+
+    /**
+     * Reads the track languages the viewer chose by hand, or null when nothing is connected.
+     *
+     * Main thread only, like [capturePosition]. An automatic selection is deliberately not reported;
+     * see [readHandPickedLanguages].
+     */
+    override fun captureTrackLanguages(): TrackLanguageSelection? =
+        mutableController.value?.readHandPickedLanguages()
+
+    /** Applies the remembered languages to whatever is loaded, before the first frame is up. */
+    fun applyTrackLanguages(languages: TrackLanguagePreferences) {
+        mutableController.value?.applyTrackLanguages(languages)
     }
 
     fun togglePlayPause(): Boolean {

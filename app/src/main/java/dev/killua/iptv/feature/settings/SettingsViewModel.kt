@@ -8,7 +8,12 @@ import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.AppFailure
 import dev.killua.iptv.domain.model.AppFailureException
 import dev.killua.iptv.domain.model.FailureKind
+import dev.killua.iptv.domain.model.SubtitleBackground
+import dev.killua.iptv.domain.model.SubtitleStyle
+import dev.killua.iptv.domain.model.SubtitleTextSize
 import dev.killua.iptv.domain.model.ThemeMode
+import dev.killua.iptv.domain.model.TrackLanguagePreferences
+import dev.killua.iptv.domain.userdata.UserDataImportPlan
 import dev.killua.iptv.domain.repository.LiveRepository
 import dev.killua.iptv.domain.repository.SessionRepository
 import kotlinx.coroutines.CancellationException
@@ -25,6 +30,10 @@ data class SettingsUiState(
     val isRefreshing: Boolean = false,
     val isReconnecting: Boolean = false,
     val isClearingArtworkCache: Boolean = false,
+    val isExporting: Boolean = false,
+    val isImporting: Boolean = false,
+    /** Set once a file has been read and understood, so the viewer can approve it before anything moves. */
+    val pendingImport: UserDataImportPlan.Ready? = null,
     val isLoggingOut: Boolean = false,
     val message: String? = null,
     val errorMessage: String? = null,
@@ -37,6 +46,12 @@ class SettingsViewModel(
     private val preferences: AppPreferences,
     private val stopPlayback: () -> Unit,
     private val clearArtworkCache: suspend () -> Unit,
+    /** Also resets the player's own memory of what it last learned; see `TrackLanguageWriter`. */
+    private val clearTrackLanguages: suspend () -> Unit,
+    /** Produces the export document for the active account. Never returns credentials. */
+    private val buildUserDataExport: suspend (accountId: String) -> String,
+    private val planUserDataImport: suspend (accountId: String, document: String) -> UserDataImportPlan,
+    private val applyUserDataImport: suspend (accountId: String, plan: UserDataImportPlan.Ready) -> Int,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SettingsUiState(account))
     val state: StateFlow<SettingsUiState> = mutableState.asStateFlow()
@@ -45,6 +60,8 @@ class SettingsViewModel(
     val pictureInPictureEnabled = preferences.pictureInPictureEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
     val autoPlayNextEpisode = preferences.autoPlayNextEpisode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val updateCheckEnabled = preferences.updateCheckEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
     val doubleTapSeekSeconds = preferences.doubleTapSeekSeconds
         .stateIn(
@@ -58,9 +75,17 @@ class SettingsViewModel(
             SharingStarted.WhileSubscribed(5_000),
             PlaybackGestureOptions.defaultHoldSpeedHundredths / 100f,
         )
+    val trackLanguages = preferences.trackLanguages
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TrackLanguagePreferences())
+    val subtitleStyle = preferences.subtitleStyle
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SubtitleStyle())
 
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { preferences.setThemeMode(mode) }
+    }
+
+    fun setUpdateCheckEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferences.setUpdateCheckEnabled(enabled) }
     }
 
     fun setPictureInPicture(enabled: Boolean) {
@@ -77,6 +102,145 @@ class SettingsViewModel(
 
     fun setHoldPlaybackSpeed(speed: Float) {
         viewModelScope.launch { preferences.setHoldPlaybackSpeed(speed) }
+    }
+
+    fun setSubtitleTextSize(size: SubtitleTextSize) {
+        viewModelScope.launch { preferences.setSubtitleTextSize(size) }
+    }
+
+    fun setSubtitleBackground(background: SubtitleBackground) {
+        viewModelScope.launch { preferences.setSubtitleBackground(background) }
+    }
+
+    /**
+     * Forgets the remembered audio and subtitle languages, so the player decides again.
+     *
+     * There is no picker here on purpose: which languages exist is a property of the stream, and a
+     * list this screen invented would offer languages the provider does not carry. The choice is
+     * made in the player, on a title that actually has the track; this row shows the result of that
+     * and takes it back.
+     */
+    fun clearTrackLanguages() {
+        viewModelScope.launch {
+            clearTrackLanguages.invoke()
+            mutableState.update { it.copy(message = "Audio and subtitle languages cleared.") }
+        }
+    }
+
+    /**
+     * Writes the export through [sink], which the screen supplies because only it has the document
+     * the viewer picked. The file is created by the system picker, so this never needs storage
+     * permission and never decides where the file goes.
+     *
+     * The document is built first and handed over whole: a failure part-way through assembling it
+     * then leaves no half-written file behind.
+     */
+    fun exportUserData(sink: suspend (String) -> Unit) {
+        if (mutableState.value.isExporting) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(isExporting = true, message = null, errorMessage = null) }
+            try {
+                val document = buildUserDataExport(mutableState.value.account.id)
+                sink(document)
+                mutableState.update {
+                    it.copy(isExporting = false, message = "Your data was exported.")
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(
+                        isExporting = false,
+                        errorMessage = "The export could not be written. Please try again.",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads a chosen file and works out what it would change, writing nothing yet.
+     *
+     * A file that is unreadable or belongs to another provider account is refused here, before the
+     * viewer is ever asked to confirm - saying yes to a merge that then fails is worse than being
+     * told no straight away.
+     */
+    fun prepareUserDataImport(document: String) {
+        if (mutableState.value.isImporting) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(isImporting = true, message = null, errorMessage = null) }
+            try {
+                when (val plan = planUserDataImport(mutableState.value.account.id, document)) {
+                    is UserDataImportPlan.Ready -> mutableState.update {
+                        if (plan.changeCount == 0) {
+                            it.copy(
+                                isImporting = false,
+                                message = "That file holds nothing this device does not already have.",
+                            )
+                        } else {
+                            it.copy(isImporting = false, pendingImport = plan)
+                        }
+                    }
+                    UserDataImportPlan.WrongAccount -> mutableState.update {
+                        it.copy(
+                            isImporting = false,
+                            errorMessage = "That file belongs to a different account.",
+                        )
+                    }
+                    is UserDataImportPlan.Unreadable -> mutableState.update {
+                        it.copy(
+                            isImporting = false,
+                            errorMessage = "That file is not a Killua IPTV export, or it was written by a newer version.",
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(
+                        isImporting = false,
+                        errorMessage = "The file could not be read. Please try again.",
+                    )
+                }
+            }
+        }
+    }
+
+    /** The picked document could not be read at all, or was implausibly large to be an export. */
+    fun reportImportUnreadable() = mutableState.update {
+        it.copy(
+            isImporting = false,
+            errorMessage = "That file could not be read as an export.",
+        )
+    }
+
+    fun cancelUserDataImport() = mutableState.update { it.copy(pendingImport = null) }
+
+    /** Writes the plan the viewer approved. Nothing is ever deleted; see `UserDataMerge`. */
+    fun confirmUserDataImport() {
+        val plan = mutableState.value.pendingImport ?: return
+        viewModelScope.launch {
+            mutableState.update { it.copy(isImporting = true, pendingImport = null) }
+            try {
+                val changed = applyUserDataImport(mutableState.value.account.id, plan)
+                mutableState.update {
+                    it.copy(isImporting = false, message = "Imported $changed entries.")
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: AppFailureException) {
+                mutableState.update { it.copy(isImporting = false) }
+                showFailure(failure.failure)
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(
+                        isImporting = false,
+                        errorMessage = "The import could not be completed. Nothing was changed.",
+                    )
+                }
+            }
+        }
     }
 
     fun clearArtworkCache() {
@@ -208,6 +372,8 @@ class SettingsViewModel(
                 isRefreshing = false,
                 isReconnecting = false,
                 isClearingArtworkCache = false,
+                isExporting = false,
+                isImporting = false,
                 errorMessage = failure.userMessage(),
             )
         }

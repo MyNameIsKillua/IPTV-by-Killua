@@ -26,6 +26,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+import dev.killua.iptv.domain.model.LibrarySource
+import dev.killua.iptv.domain.model.AccountStatus
+import dev.killua.iptv.data.playlist.PlaylistProbeResult
+import dev.killua.iptv.data.playlist.PlaylistProbe
 
 class DefaultSessionRepository(
     private val accountDao: AccountDao,
@@ -33,6 +37,8 @@ class DefaultSessionRepository(
     private val remote: XtreamRemoteDataSource,
     private val accountData: AccountDataCoordinator,
     private val applicationScope: CoroutineScope,
+    /** Stands in for a sign-in when there is no account to authenticate; see [PlaylistProbe]. */
+    private val playlistProbe: PlaylistProbe,
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : SessionRepository {
     private val mutableState = MutableStateFlow<SessionState>(SessionState.Booting)
@@ -98,6 +104,50 @@ class DefaultSessionRepository(
         runCatching { accountData.clearAllAccountDataExcept(credentials.accountId) }
         account
     }
+
+    override suspend fun loginWithPlaylist(url: String, displayName: String): Account =
+        sessionMutationMutex.withLock {
+            val address = when (val outcome = playlistProbe.probe(url.trim())) {
+                is PlaylistProbeResult.Ok -> outcome.url
+                // All three are the viewer's to fix, and none of them is an account problem, so
+                // they arrive as one failure the sign-in screen can word for itself.
+                PlaylistProbeResult.NotAPlaylist,
+                is PlaylistProbeResult.Refused,
+                PlaylistProbeResult.Unreachable,
+                -> throw AppFailureException(AppFailure(FailureKind.AuthenticationFailed))
+            }
+            val credentials = XtreamCredentials(
+                accountId = UUID.randomUUID().toString(),
+                serverUrl = address,
+                username = "",
+                password = "",
+                source = LibrarySource.Playlist,
+            )
+            val entity = AccountEntity(
+                accountId = credentials.accountId,
+                displayName = displayName.trim().takeIf { it.isNotBlank() },
+                status = AccountStatus.Active.name,
+                // A file does not expire, is not rate-limited, and has no timezone or format list.
+                expiresAtEpochSeconds = null,
+                activeConnections = null,
+                maximumConnections = null,
+                serverTimezone = null,
+                allowedOutputFormats = "",
+                lastValidatedAtEpochMillis = nowMillis(),
+                lastLiveSyncAtEpochMillis = null,
+            )
+            accountDao.upsert(entity)
+            try {
+                credentialVault.save(credentials)
+            } catch (error: Throwable) {
+                accountDao.delete(credentials.accountId)
+                throw error
+            }
+            val account = entity.toDomain(credentials)
+            mutableState.value = SessionState.Authenticated(account)
+            runCatching { accountData.clearAllAccountDataExcept(credentials.accountId) }
+            account
+        }
 
     override suspend fun reconnect(): Account = sessionMutationMutex.withLock {
         val credentials = credentialVault.load()

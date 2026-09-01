@@ -1,6 +1,7 @@
 package dev.killua.iptv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,9 +26,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +46,8 @@ import dev.killua.iptv.domain.model.RecentlyAddedEntry
 import dev.killua.iptv.domain.model.ResumableKind
 import dev.killua.iptv.domain.model.WatchlistEntry
 import dev.killua.iptv.domain.model.WatchlistKind
+import dev.killua.iptv.ui.theme.Cyan
+import dev.killua.iptv.ui.theme.LocalIsTelevision
 
 /** Provider artwork is portrait for both Movies and Series. */
 const val POSTER_ASPECT_RATIO = 2f / 3f
@@ -61,13 +70,29 @@ fun PosterCard(
      */
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    Column(modifier.clickable(onClick = onClick)) {
+    // Focus is **watched on the tile and drawn on the artwork**, which is two places on purpose.
+    // The clickable is what a remote can land on, so that is the only node whose focus state means
+    // anything — `onFocusChanged` on a child of it never fires, which is how this was got wrong the
+    // first time. And the ring belongs on the picture rather than around the whole tile, because
+    // the caption below is two lines of a length nobody controls, and a border that changes height
+    // with the title is a list that jumps as the remote moves through it.
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(POSTER_ASPECT_RATIO)
                 .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(
+                    width = 3.dp,
+                    color = if (focused) Cyan else Color.Transparent,
+                    shape = RoundedCornerShape(12.dp),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             if (posterUrl != null) {
@@ -134,7 +159,7 @@ fun ContinueWatchingRow(
                     posterUrl = entry.posterUrl,
                     meta = if (showKind && entry.kind == ResumableKind.Series) "Series" else null,
                     onClick = { onOpen(entry) },
-                    modifier = Modifier.width(104.dp),
+                    modifier = Modifier.width(posterWidth()),
                 )
             }
         }
@@ -178,7 +203,7 @@ fun SavedListRow(
                         WatchlistKind.Channel -> "Channel"
                     },
                     onClick = { onOpen(entry) },
-                    modifier = Modifier.width(104.dp),
+                    modifier = Modifier.width(posterWidth()),
                     contentScale = if (entry.kind == WatchlistKind.Channel) {
                         ContentScale.Fit
                     } else {
@@ -221,12 +246,29 @@ fun RecentlyAddedRow(
                     posterUrl = entry.posterUrl,
                     meta = if (entry.kind == ResumableKind.Series) "Series" else null,
                     onClick = { onOpen(entry) },
-                    modifier = Modifier.width(104.dp),
+                    modifier = Modifier.width(posterWidth()),
                 )
             }
         }
     }
 }
+
+/**
+ * How wide a poster is, and how little of one a grid will accept.
+ *
+ * Two numbers because a television is not a large phone. The Fire TV Stick this was measured
+ * against reports 1920x1080 at density 2, which is 960dp wide - so at the phone's 116dp minimum a
+ * grid puts **seven** posters across, each of them a thumbnail at three metres. Four is what the
+ * same screen holds at 200dp, which is a poster someone can actually read the title under.
+ *
+ * The row uses the same pair for the same reason: a row of 104dp tiles on a television is a strip
+ * of stamps.
+ */
+@Composable
+private fun posterWidth(): Dp = if (LocalIsTelevision.current) 180.dp else 104.dp
+
+@Composable
+private fun posterMinimum(): Dp = if (LocalIsTelevision.current) 200.dp else 116.dp
 
 /** The grid both libraries use, so their cell size and spacing cannot drift apart. */
 @Composable
@@ -235,7 +277,7 @@ fun PosterGrid(
     content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 116.dp),
+        columns = GridCells.Adaptive(minSize = posterMinimum()),
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),

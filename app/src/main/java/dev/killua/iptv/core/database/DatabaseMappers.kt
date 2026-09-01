@@ -13,6 +13,7 @@ import dev.killua.iptv.domain.model.SeriesCategory
 import dev.killua.iptv.domain.model.SeriesDetails
 import dev.killua.iptv.domain.model.SeriesEpisode
 import dev.killua.iptv.domain.model.SeriesSummary
+import dev.killua.iptv.domain.model.StreamHeaders
 import dev.killua.iptv.domain.model.WatchProgress
 import dev.killua.iptv.domain.model.XtreamCredentials
 
@@ -29,6 +30,7 @@ fun AccountEntity.toDomain(credentials: XtreamCredentials): Account = Account(
     allowedOutputFormats = allowedOutputFormats.split(',').filter(String::isNotBlank).toSet(),
     lastValidatedAtEpochMillis = lastValidatedAtEpochMillis,
     lastLiveSyncAtEpochMillis = lastLiveSyncAtEpochMillis,
+    source = credentials.source,
 )
 
 fun LiveCategoryEntity.toDomain(): LiveCategory = LiveCategory(
@@ -44,9 +46,10 @@ fun LiveChannelEntity.toDomain(lastWatchedAt: Long? = null): LiveChannel = LiveC
     logoUrl = logoUrl,
     epgChannelId = epgChannelId,
     containerExtension = containerExtension,
-    directSource = null,
+    directSource = directSource,
     providerOrder = providerOrder,
     lastWatchedAtEpochMillis = lastWatchedAt,
+    streamHeaders = StreamHeaders(streamUserAgent, streamReferrer).takeUnless { it.isEmpty },
 )
 
 fun MovieCategoryEntity.toDomain(): MovieCategory = MovieCategory(

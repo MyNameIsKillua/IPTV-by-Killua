@@ -33,6 +33,13 @@ google-services.json
 # Proton Drive sync conflict copies. They must never be committed; delete them locally.
 *Name clash*
 
+# Raw device captures. Only the versions prepared for the README live in docs/images/,
+# because a raw capture may still show account details the prepared one has masked.
+Pictures for github/
+# The raw screenshots, at whatever size the screen was. What ships is the scaled JPEG in
+# docs/images; keeping both would put every picture in the repository twice.
+Windows Pics/
+
 # Operating systems and temporary files
 .DS_Store
 Thumbs.db
@@ -40,3 +47,11 @@ Thumbs.db
 *.tmp
 *.swp
 *~
+
+# Eclipse-style output directories some IDEs create beside the Gradle ones. Build products, and
+# they showed up as an untracked change on every status for weeks.
+desktop/bin/
+shared/bin/
+
+# Staged release assets. Built artifacts, never committed.
+release-*/

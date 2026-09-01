@@ -7,6 +7,35 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Updating the app from inside the app, because a sideloaded app has no store behind it.
+
+      This permission is visible to anyone who inspects the package, so it is worth saying exactly
+      what it does and does not allow. It lets the app ask the system installer to install a file;
+      it does not let the app install anything by itself. The viewer still confirms in the system's
+      own dialog, and from Android 8 they must first allow this app in system settings, which
+      cannot be granted from in here.
+
+      What it cannot do, whatever a substituted download might contain: replace this app with a
+      different one. Android refuses any update whose signing certificate differs from the
+      installed app's. See docs/SECURITY.md.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
+      Television, as something the app runs on rather than something it is built for.
+
+      Both are declared not required, which is the whole of what makes one build serve both: a phone
+      has no leanback launcher and a television has no touchscreen, and a feature marked required
+      would take the app off one store listing or the other. Nothing else about the app changes.
+    -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
     <application
         android:name=".IptvApplication"
         android:allowBackup="false"
@@ -15,6 +44,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:banner="@drawable/tv_banner"
         android:supportsRtl="true"
         android:theme="@style/Theme.KilluasIPTV"
         android:usesCleartextTraffic="true">
@@ -29,6 +59,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- The same activity, reached from a television's home screen. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 
@@ -40,6 +72,24 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!--
+          Hands one downloaded package to the system installer, and nothing else.
+
+          The installer runs in another process and cannot read this app's cache directory, so a
+          content URI is the only way to give it the file. The path list is deliberately a single
+          directory inside the cache rather than the whole of it: an exported provider is a door,
+          and this one opens onto one room.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
     </application>
 
 </manifest>

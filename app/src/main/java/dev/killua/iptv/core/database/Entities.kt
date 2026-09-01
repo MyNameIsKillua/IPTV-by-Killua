@@ -68,6 +68,21 @@ data class LiveChannelEntity(
     val languageTag: String?,
     val providerOrder: Int,
     val syncGeneration: Long,
+    /**
+     * The channel's own address, for a library that came from a playlist rather than from Xtream.
+     *
+     * Always null for an Xtream account, and deliberately so: there the address is built at
+     * playback time by `XtreamStreamUrlFactory` out of the account, and `XtreamJsonParser` does not
+     * read `direct_source` at all. Storing one would be storing the credentials in a second place.
+     *
+     * For a playlist there is no id to build an address from and no account to put in one, so this
+     * column is the only way back to the stream. Its presence is therefore also what tells the two
+     * kinds of channel apart without a flag being carried alongside.
+     */
+    val directSource: String? = null,
+    /** What a playlist said this channel's server insists on; see `StreamHeaders`. */
+    val streamUserAgent: String? = null,
+    val streamReferrer: String? = null,
 ) {
     companion object {
         /**

@@ -6,6 +6,9 @@ import dev.killua.iptv.core.database.WatchlistProjection
 import dev.killua.iptv.domain.model.WatchlistEntry
 import dev.killua.iptv.domain.model.WatchlistKind
 import dev.killua.iptv.domain.repository.WatchlistRepository
+import dev.killua.iptv.domain.userdata.CHANNEL_CONTENT_TYPE
+import dev.killua.iptv.domain.userdata.MOVIE_CONTENT_TYPE
+import dev.killua.iptv.domain.userdata.SERIES_CONTENT_TYPE
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -74,18 +77,21 @@ class DefaultWatchlistRepository(
     }
 
     private companion object {
-        // The same discriminators watch_progress uses, so one identity scheme covers the app.
-        const val MOVIE_TYPE = "movie"
-        const val SERIES_TYPE = "series"
-        const val CHANNEL_TYPE = "channel"
+        // The same discriminators watch_progress uses, so one identity scheme covers the app — and
+        // the same ones the export format carries, so a saved row means the same thing on both
+        // clients. Taken from `:shared` rather than repeated here, because the day these two
+        // vocabularies drift is the day a bookmark quietly stops crossing between devices.
+        const val MOVIE_TYPE = MOVIE_CONTENT_TYPE
+        const val SERIES_TYPE = SERIES_CONTENT_TYPE
+        const val CHANNEL_TYPE = CHANNEL_CONTENT_TYPE
     }
 }
 
 private val WatchlistKind.contentType: String
     get() = when (this) {
-        WatchlistKind.Movie -> "movie"
-        WatchlistKind.Series -> "series"
-        WatchlistKind.Channel -> "channel"
+        WatchlistKind.Movie -> MOVIE_CONTENT_TYPE
+        WatchlistKind.Series -> SERIES_CONTENT_TYPE
+        WatchlistKind.Channel -> CHANNEL_CONTENT_TYPE
     }
 
 /**
@@ -96,9 +102,9 @@ private val WatchlistKind.contentType: String
  */
 private fun WatchlistProjection.toEntry(): WatchlistEntry? {
     val kind = when (contentType) {
-        "movie" -> WatchlistKind.Movie
-        "series" -> WatchlistKind.Series
-        "channel" -> WatchlistKind.Channel
+        MOVIE_CONTENT_TYPE -> WatchlistKind.Movie
+        SERIES_CONTENT_TYPE -> WatchlistKind.Series
+        CHANNEL_CONTENT_TYPE -> WatchlistKind.Channel
         else -> return null
     }
     return WatchlistEntry(

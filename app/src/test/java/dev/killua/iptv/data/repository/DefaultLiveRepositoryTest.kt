@@ -23,6 +23,10 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
+import dev.killua.iptv.domain.model.LiveChannel
+import dev.killua.iptv.domain.model.StreamHeaders
+import dev.killua.iptv.domain.model.LiveCategory
+import dev.killua.iptv.domain.model.LibrarySource
 
 /**
  * Covers the account-scoped write path of the live library. Provider traffic is served by
@@ -31,6 +35,7 @@ import retrofit2.Retrofit
 class DefaultLiveRepositoryTest {
     private lateinit var server: MockWebServer
     private lateinit var repository: DefaultLiveRepository
+    private val playlistSource = FakePlaylistSource()
 
     private val transactions = RecordingTransactionRunner()
     private val liveDao = FakeLiveDao()
@@ -87,14 +92,100 @@ class DefaultLiveRepositoryTest {
                     },
                 ),
             ),
+            playlistSource = playlistSource,
             nowMillis = { clockMillis },
         )
+    }
+
+    /**
+     * Stands in for a playlist file, so these tests never open a socket for one.
+     *
+     * It refuses until a test gives it channels, which keeps the Xtream tests honest: if one of
+     * them ever reached this, it would say so rather than quietly passing.
+     */
+    private class FakePlaylistSource : LiveListingSource {
+        var channels: List<LiveChannel>? = null
+
+        override suspend fun liveCategories(credentials: XtreamCredentials): List<LiveCategory> {
+            check(channels != null) { "This test did not mean to read a playlist" }
+            // A playlist lists none up front; the groups are inside the entries.
+            return emptyList()
+        }
+
+        override suspend fun <T> withLiveChannels(
+            credentials: XtreamCredentials,
+            block: suspend (Sequence<LiveChannel>) -> T,
+        ): T {
+            val listing = checkNotNull(channels) { "This test did not mean to read a playlist" }
+            return block(listing.asSequence())
+        }
     }
 
     @After
     fun tearDown() {
         server.shutdown()
     }
+
+    @Test
+    fun `a playlist refresh derives its categories from the groups on the entries`() = runTest {
+        vault.source = LibrarySource.Playlist
+        playlistSource.channels = listOf(
+            playlistChannel(id = "a1", name = "Erstes", group = "News"),
+            playlistChannel(id = "a2", name = "Zweites", group = "Sport"),
+            playlistChannel(id = "a3", name = "Drittes", group = "News"),
+            playlistChannel(id = "a4", name = "Viertes", group = null),
+        )
+
+        val result = repository.refresh(ACCOUNT)
+
+        // Two categories from three grouped entries, in the order they first appeared. The
+        // ungrouped one is a channel without a category, not a category called nothing.
+        assertThat(result.categoryCount).isEqualTo(2)
+        assertThat(result.channelCount).isEqualTo(4)
+        assertThat(liveDao.categories.map { it.name }).containsExactly("News", "Sport").inOrder()
+        // A playlist has no category ids of its own, so the group title is both.
+        assertThat(liveDao.categories.map { it.remoteCategoryId })
+            .containsExactly("News", "Sport").inOrder()
+    }
+
+    @Test
+    fun `a playlist channel keeps the address and headers it can only be played with`() = runTest {
+        vault.source = LibrarySource.Playlist
+        playlistSource.channels = listOf(
+            playlistChannel(
+                id = "a1",
+                name = "Erstes",
+                group = "News",
+                directSource = "https://stream.example/a.m3u8",
+                headers = StreamHeaders(userAgent = "Mozilla/5.0", referrer = "https://portal.example/"),
+            ),
+        )
+
+        repository.refresh(ACCOUNT)
+
+        val row = liveDao.channels.single()
+        assertThat(row.directSource).isEqualTo("https://stream.example/a.m3u8")
+        assertThat(row.streamUserAgent).isEqualTo("Mozilla/5.0")
+        assertThat(row.streamReferrer).isEqualTo("https://portal.example/")
+    }
+
+    private fun playlistChannel(
+        id: String,
+        name: String,
+        group: String?,
+        directSource: String = "https://stream.example/$id.m3u8",
+        headers: StreamHeaders? = null,
+    ) = LiveChannel(
+        id = id,
+        categoryId = group,
+        name = name,
+        logoUrl = null,
+        epgChannelId = null,
+        containerExtension = "m3u8",
+        directSource = directSource,
+        providerOrder = 0,
+        streamHeaders = headers,
+    )
 
     @Test
     fun `a successful refresh commits categories and channels in one transaction`() = runTest {
@@ -266,6 +357,9 @@ class DefaultLiveRepositoryTest {
             password: String,
             displayName: String,
         ): Account = throw UnsupportedOperationException()
+
+        override suspend fun loginWithPlaylist(url: String, displayName: String): Account =
+            error("Playlists are not part of these tests")
 
         override suspend fun reconnect(): Account = throw UnsupportedOperationException()
 

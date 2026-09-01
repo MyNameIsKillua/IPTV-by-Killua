@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import dev.killua.iptv.domain.model.LibrarySource
 
 class DefaultLiveRepository(
     private val liveDao: LiveDao,
@@ -37,6 +38,10 @@ class DefaultLiveRepository(
     private val accountData: AccountDataCoordinator,
     private val sessionRepositoryProvider: () -> SessionRepository,
     private val remote: XtreamRemoteDataSource,
+    /**
+     * Where a playlist account's listing comes from. See [LiveListingSource] for why there are two.
+     */
+    private val playlistSource: LiveListingSource,
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : LiveRepository, AccountDataCleaner {
     private val generation = AtomicLong(nowMillis())
@@ -139,7 +144,11 @@ class DefaultLiveRepository(
 
     override suspend fun refresh(accountId: String, onProgress: (Int) -> Unit): LiveSyncResult {
         val credentials = sessionRepositoryProvider().credentialsFor(accountId)
-        val categories = remote.liveCategories(credentials)
+        // Which of the two listings this account has. Everything after this line is identical for
+        // both, which is the whole point of the seam.
+        val source: LiveListingSource =
+            if (credentials.source == LibrarySource.Playlist) playlistSource else remote
+        val categories = source.liveCategories(credentials)
 
         // The provider category is the most reliable language signal, so resolve it once and let
         // a channel-name tag fill in only where the category says nothing.
@@ -147,7 +156,17 @@ class DefaultLiveRepository(
             category.id to XtreamLanguageTagger.languageOfCategory(category.name)
         }
 
-        val result = remote.withLiveChannels(credentials) { channels ->
+        /*
+         * The groups a playlist keeps inside its entries.
+         *
+         * An M3U has no category listing to fetch: `group-title` sits on each `#EXTINF` line, so
+         * the only way to know the set is to watch it go past. Collected here rather than by the
+         * source, which keeps [LiveListingSource] to the two calls it already had - and for Xtream
+         * this stays empty, because its categories arrived up front.
+         */
+        val discoveredCategories = LinkedHashSet<String>()
+
+        val result = source.withLiveChannels(credentials) { channels ->
             accountData.commitTransaction(accountId) {
                 val syncGeneration = generation.updateAndGet { previous ->
                     maxOf(previous + 1L, nowMillis())
@@ -181,17 +200,50 @@ class DefaultLiveRepository(
                                     ?: XtreamLanguageTagger.languageOfTitle(channel.name),
                                 providerOrder = channel.providerOrder,
                                 syncGeneration = syncGeneration,
+                                directSource = channel.directSource,
+                                streamUserAgent = channel.streamHeaders?.userAgent,
+                                streamReferrer = channel.streamHeaders?.referrer,
                             )
                         },
                     )
+                    batch.forEach { channel ->
+                        channel.categoryId?.let { discoveredCategories += it }
+                    }
                     channelCount += batch.size
                     onProgress(channelCount)
                 }
 
+                /*
+                 * A playlist's categories, written after the channels because that is when they are
+                 * known. Same transaction and same generation, so the stale sweep below treats them
+                 * exactly as it treats the Xtream ones.
+                 *
+                 * The group title is both the id and the name: a playlist has no category ids, and
+                 * inventing one would break the moment the file is read again.
+                 */
+                val playlistCategories = if (categories.isEmpty()) {
+                    discoveredCategories.mapIndexed { index, group ->
+                        LiveCategoryEntity(
+                            accountId = accountId,
+                            remoteCategoryId = group,
+                            name = group,
+                            sortOrder = index,
+                            syncGeneration = syncGeneration,
+                        )
+                    }
+                } else {
+                    emptyList()
+                }
+                playlistCategories.chunked(UPSERT_BATCH_SIZE).forEach { liveDao.upsertCategories(it) }
+
                 liveDao.deleteStaleChannels(accountId, syncGeneration)
                 liveDao.deleteStaleCategories(accountId, syncGeneration)
                 accountDao.setLastLiveSync(accountId, finishedAt)
-                LiveSyncResult(categories.size, channelCount, finishedAt)
+                LiveSyncResult(
+                    maxOf(categories.size, playlistCategories.size),
+                    channelCount,
+                    finishedAt,
+                )
             }
         }
         sessionRepositoryProvider().refreshCachedAccount()

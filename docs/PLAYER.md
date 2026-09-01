@@ -386,7 +386,142 @@ The double-tap seek interval can be 5, 10, 15, 20, 30, 45, or 60 seconds; its de
 
 Relative seeking is guarded by Media3's current-window state. It runs only when an active item is present and `isCurrentMediaItemSeekable` is true, and the target is clamped to the available duration when known. A true linear live channel normally cannot seek; a compatible DVR/time-shift window can. The on-screen cue says **Seeking unavailable** instead of pretending a live seek succeeded.
 
-Audio and subtitle availability is stream-dependent. The app uses Media3's stock track-selection UI, so a provider stream exposing multiple audio languages or subtitle tracks can be changed during playback. The app cannot create tracks that are absent from the source, and it does not yet remember a preferred language or offer custom subtitle styling. Current support remains enabled, but its meaningful real-device verification is deferred until Movies/Series provide known multi-track sources; a single-track Live channel cannot prove that selection works.
+Audio and subtitle availability is stream-dependent. The app uses Media3's stock track-selection UI, so a provider stream exposing multiple audio languages or subtitle tracks can be changed during playback. The app cannot create tracks that are absent from the source, and it does not yet offer custom subtitle styling. Current support remains enabled, but its meaningful real-device verification is deferred until a known multi-track source is available; a single-track Live channel cannot prove that selection works.
+
+### Remembered audio and subtitle language
+
+A provider hands the same series out with several audio tracks and no consistent order, so the track
+the player picks on its own is whichever the file happens to list first. Choosing again on every
+episode was the friction. The language picked in the stock track menu is now remembered and applied
+to everything watched afterwards.
+
+**Only a deliberate choice is learned.** The signal is a `TrackSelectionOverride` in the player's
+selection parameters, which is what the stock menu writes and nothing else in this app does — the
+overrides are cleared before every title, so one present afterwards can only have come from the
+viewer. The automatic selection is deliberately never read: a film carrying nothing but French audio
+would otherwise make French the preference for everything after it, without anyone having asked.
+
+**Preferences are stored, overrides are not.** An override names a concrete track group of a
+concrete stream; carrying one into the next title would either match nothing or match a group at the
+same index holding a different language. What is stored is the language tag, applied as
+`setPreferredAudioLanguage` / `setPreferredTextLanguage` after the item is loaded and **before**
+`prepare`, so the first track selection pass already picks the right audio rather than the viewer
+hearing the wrong language for a second.
+
+**Subtitles off is a state of its own**, kept as `setTrackTypeDisabled(TRACK_TYPE_TEXT)` rather than
+as an absent language, so a stream that offers subtitles cannot quietly turn them back on. Picking a
+subtitle language turns them on again and clears the off state; turning them off clears the
+remembered language, because the next explicit pick is what should define it.
+
+**It is read, not awaited.** The choice is captured on the same rhythm as a watch-progress
+checkpoint — every ten seconds while playing, and on pause, end, background, PiP, back, and
+`onCleared` — rather than by listening for `onTrackSelectionParametersChanged`. That is the lesson
+from the withdrawn playback-speed attempt below: a `MediaController` change callback that never
+arrives is a control that silently does nothing. Live channels are captured too, even though they
+store no position: a channel with two audio tracks is exactly the case worth remembering.
+
+Writes are bounded twice. A capture carrying no hand-made choice is dropped without touching the
+store at all — the common case, and the one that would otherwise cost a store read every ten seconds
+for the length of a film — and a repeat of the selection already handled is dropped as well. The
+write itself runs on the application scope, like the progress writer, because the most valuable
+capture is the last one and a `viewModelScope` is already cancelled by then.
+
+Undetermined tags (`und`, `zxx`) are never stored; remembering one would mean preferring whichever
+track a muxer forgot to label, on every title from then on.
+
+**Settings shows what is remembered and can clear it.** There is no picker there on purpose: which
+languages exist is a property of the stream, and a list this app invented would offer languages the
+provider does not carry. Clearing also resets the writer's memory of what it last handled, otherwise
+re-picking the language just cleared would be swallowed as a duplicate.
+
+The decisions live in `domain/model/TrackLanguages.kt` and are covered by `TrackLanguagesTest` and
+`TrackLanguageWriterTest`. Only the translation to and from Media3 is in `TrackLanguageAdapter.kt`,
+which cannot run on the JVM and has no test; reading a track group's language needs unstable Media3
+API, opted into there and nowhere else.
+
+### How subtitles look
+
+Two settings, both remembered: **Subtitle size** and **Subtitle background**. They are separate
+because they solve different problems — one is about being able to read the text at arm's length, the
+other about the text disappearing into a bright scene.
+
+**Both default to the system**, meaning Android's caption preferences under Accessibility. That is
+the whole reason the enums carry a `System` member rather than starting at a value this app picked:
+someone who has set large captions system-wide did so because they need them, and an app that
+silently overrides that has made an accessibility setting useless. Media3's `SubtitleView` already
+reads those preferences through `setUserDefaultStyle` and `setUserDefaultTextSize`, and the default
+simply leaves it doing that.
+
+**Size is a fraction of the player's height** (0.04 to 0.09; `Normal` is Media3's own 0.0533, so it
+means "what the player would have done"). Not a point size: the player is full-screen landscape, a
+fixed size would be a different physical size on every device, and it would not follow the picture.
+
+**Background covers the four ways text is separated from video** — plain, drop shadow, outline, or a
+translucent box directly behind the glyphs. The subtitle *window* colour stays transparent in all of
+them: a band across the whole subtitle region hides more of the picture than the text needs.
+
+**Text colour is deliberately not offered.** White is the readable choice over video, and a colour
+picker without a contrast rule is a way to make subtitles worse. It stays with the system option for
+anyone who has set a colour there.
+
+**A chosen style has to beat the stream's own.** `setApplyEmbeddedStyles(false)` is what makes that
+true, and it is set as soon as a background is chosen — otherwise the setting would appear broken on
+exactly the streams that carry styling. One consequence is worth knowing: Media3 ties embedded font
+sizes to the same switch, so choosing a background also stops a stream's own sizes from being
+honoured, whatever the size setting says.
+
+**There is no preview in Settings**, and that is a decision rather than an omission. The size is a
+fraction of the *player's* height, so a sample drawn in a settings list would be a different size
+than the real thing and would mislead about the one property being set. The rows name the choice and
+what it does instead.
+
+The style is reapplied in the player's `update` block rather than at construction, because the view
+outlives one episode and a change made in Settings has to reach a player that is already on screen.
+Every call sets every property it owns, so no earlier choice survives as a leftover.
+
+The rules are in `domain/model/SubtitleStyle.kt`, covered by `SubtitleStyleTest`. The translation to
+`CaptionStyleCompat` is in `feature/player/SubtitleStyleView.kt`, is the second place opting into
+unstable Media3 API, and has no test — `SubtitleView` is an Android view.
+
+**These settings only style text subtitles, and on this provider that is a real limitation rather
+than a footnote.** Probing the reference provider on 17 August 2026 (see *What the reference provider
+actually serves* below) found `subrip` mixed with `hdmv_pgs_subtitle` and `dvd_subtitle` on the same
+titles, and some titles carrying almost nothing but PGS. Bitmap subtitles are images: size and
+background cannot apply to them, because there is no text to lay out or draw a box behind. A viewer
+who picks a PGS track and sees no change has not found a bug.
+
+Two things follow, and neither is done:
+
+- the track menu does not say which tracks are text and which are bitmap, so the only way to find out
+  is to try one;
+- whether `dvd_subtitle` (VobSub) and `dvb_teletext` render **at all** is unconfirmed. Media3 decodes
+  PGS, and DVB subtitles, but VobSub and teletext are not in its decoder set as far as this project
+  knows. A track that appears in the menu and then shows nothing would look exactly like a broken
+  app. This needs a device check before it is claimed either way.
+
+### What the reference provider actually serves
+
+Measured on 17 August 2026 with `ffprobe` from a Windows desktop against the owner's own account,
+sampling one live category and one movie category. Recorded because it shapes every player decision
+on every platform, and because guessing at it has already cost this project once.
+
+- **The account is reachable from a desktop process.** No user-agent filtering, no IP binding: 21 of
+  22 sampled streams read fine. The single failure was an HTTP read error consistent with the
+  account's **one** simultaneous connection, not with a block.
+- **Video is HEVC at 3840x2160 for most of it**, live channels included, with h264 1080p mixed in
+  under channel names that advertise 4K. Movie masters are cropped to the film's aspect
+  (3840x1608, 3840x2074, 3840x2080), which is what the picture-size control is for.
+- **Audio is 6-channel AAC or E-AC3 on films, 2-channel AAC or MP2 on channels.**
+- **Live channels are where the multiple audio tracks are, not films.** Every sampled film had one
+  audio track; several sports channels carry two to four. That inverts the assumption this project
+  has held since alpha 3, which was that Movies would eventually supply a multi-track source.
+- **Films carry 12 to 35 subtitle tracks**, a mix of `subrip`, `hdmv_pgs_subtitle` and
+  `dvd_subtitle`. Channels carry none, or `dvb_teletext`.
+- Allowed output formats are `m3u8`, `ts` and `rtmp`; the server reports port 80 and HTTPS 443.
+
+The probe lives outside the repository, reads credentials from a local file that is never committed,
+and redacts host, username and password from everything it prints — including anything `ffprobe`
+writes to stderr. Do not move it into the repository and do not record its input anywhere.
 
 ## Playback and artwork caching
 
@@ -430,6 +565,386 @@ Media3 errors are reduced to safe application failures:
 Retryable presentation does not include the source URL or raw exception text. For a media-load failure, Retry prepares/plays the existing controller. If controller construction itself failed, Retry cancels the failed future, rebuilds the controller connection, then continues the channel start when a controller is available. Technical debug tooling must preserve URL redaction because Xtream URLs contain the username and password.
 
 Whenever application session state leaves `Authenticated`—including a cached-first startup that later discovers invalid/expired credentials—the root UI centrally stops and clears playback before displaying recovery or login UI.
+
+## The desktop player
+
+Everything above is the Android player. The Windows/macOS client has a second one, sharing the URL
+construction, the format selection and the completion rules from `:shared` and nothing else — it is
+libvlc through vlcj, not Media3, and the two have almost no vocabulary in common.
+
+### How the picture reaches the screen
+
+Compose Multiplatform has no video component, so the video is drawn as ordinary Compose content.
+Two choices carry that, and both were settled by measurement rather than preference:
+
+- **libvlc hands over its decoder's own I420 planes.** Asking it for BGRA instead costs about 28ms a
+  frame at 4K on the CPU and caps the pipeline at 19fps; taking the planes and converting them in a
+  Skia shader reaches the full 50, and drops the payload from 33MB a frame to 12.4MB.
+- **Each frame becomes an immutable Skia image before Compose sees it.** Handing Compose a bitmap
+  whose pixels libvlc then overwrites crashes the JVM natively — Skia keeps reading that memory while
+  the decoder writes into it. The copy is what makes the race impossible rather than merely unlikely.
+
+The measured result is 50 of 50 frames presented at 3840x2176 with Compose UI in the same scene,
+using 4.4ms of a 20ms budget. The planes are handed to the shader as `ALPHA_8` rather than `GRAY_8`
+deliberately: alpha is not colour-managed, so a value put in survives sampling unchanged, while a
+grey image can pick up a colour-space transform on the way through and skew the conversion. The
+shader itself is BT.709 limited range, which is what broadcast HD and UHD are.
+
+The frame is **polled** by the surface every 2ms rather than pushed: the decode thread must never
+touch Compose state, and a frame that arrives between two draws is simply the one that gets skipped.
+
+Because the video is Compose content, every control drawn over it is Compose too. That is the
+property the whole desktop client is built on, and the reason the player takes the entire content
+area instead of a column beside the browsing list.
+
+One provider-specific fact worth keeping: the reference provider serves **10-bit HEVC**, which
+libvlc's `d3d11va` hardware path refuses, so those streams decode in software at 2.3–5.9x real time
+on the development machine. That is comfortable, but it is CPU rather than GPU, and it is why the
+per-frame budget above matters.
+
+### What the controls do, and what they refuse
+
+- **Seeking is refused on anything without a known length.** A live stream reports none, and libvlc
+  answers a seek in one either by doing nothing or by dropping the connection — neither is a useful
+  reply to a dragged slider. Live shows a **LIVE** marker where the timeline would be, and previous
+  and next channel buttons in the space that frees up.
+- **Resume is a media option, not a seek.** The position is handed to libvlc as `:start-time=` with
+  the media, so the first frame the viewer sees is the right one. Seeking after playback begins means
+  seeing the opening seconds and then a jump. The Android player hands its resume position over the
+  same way, before prepare.
+- **Position is polled twice a second** rather than driven by libvlc's events: those arrive on its own
+  threads and vlcj is explicit that calling back into the player from them is unsafe. While a drag is
+  in progress the slider follows the pointer rather than the stream.
+- **Volume survives a media change.** libvlc drops the level with each new media and refuses to set
+  it before playback is actually running, so there is no single moment to apply it at; the same poll
+  that reads the position puts the chosen level back whenever it has drifted. Mute is left alone
+  while muted, because mute and level are separate switches there and correcting one while the other
+  is on invites the two to fight every half second.
+- **Track menus ask libvlc when they open.** Descriptions exist only once the container has been
+  parsed, so a cached list would be empty exactly when the viewer first looks. libvlc's own *Disable*
+  entry is left in the subtitle list, because it carries id -1 and *is* how subtitles are turned off.
+
+### Fitting the picture
+
+Two modes, one button. **Fit** takes the smaller scale and leaves bars; **fill** takes the larger and
+puts the overflow outside the canvas, which is the crop. Both keep the picture's own proportions —
+nothing here ever stretches, because a stretched face is worse than either bars or a crop.
+
+Fit is the default and fill resets with each new medium, for the same reason the rate does: it is a
+decision about *this* picture's shape, taken because the bars were wider than the picture, and
+carrying it to the next title would cut the sides off something nobody asked to have cut.
+
+`C` is the key, which is VLC's own key for cropping — the client is played by people who have used
+VLC, and a key they already know is one they do not have to learn.
+
+### Playback speed
+
+A pill in the control row, offered **only where there is a timeline**: a rate on a live stream drifts
+away from the broadcast and there is nothing to drift back to. It carries the current rate rather
+than an icon, because the one thing worth knowing at a glance is whether anything is off normal —
+a menu that hides that is how a film ends up watched at 1.25 for an hour by accident.
+
+Deliberately **not remembered**, which is the same judgement the Android player made about its
+press-and-hold speed. A rate is chosen for one title — a lecture at 1.25, a slow scene at 0.75 — and
+carrying it into the next one, still less into live television, would be a setting nobody asked for
+wearing the costume of a preference. Every new medium starts at one, which is also what libvlc does
+on its own; the client only keeps the two in step, from the same poll that puts the volume back.
+
+### Fullscreen is a second window
+
+This is worth reading before anyone "simplifies" it back.
+
+Fullscreen used `WindowPlacement.Fullscreen`, which is the obvious thing and is broken on Windows.
+Compose hands that placement to Skiko, which puts the window into **exclusive** full-screen mode
+through the graphics device, and exclusive mode has one documented behaviour that ruins it here: the
+window minimizes itself the moment it loses focus. Alt-tabbing to a browser, or clicking anything on
+a second monitor, made the picture vanish into the taskbar — and coming back out left the placement
+stuck, so fullscreen could not be left either. Both were measured on the owner's machine before the
+replacement was written:
+
+```
+AFTER-ENTER     exclusiveFullscreen=true   iconified=false
+WHILE-UNFOCUSED exclusiveFullscreen=true   iconified=true    <- Windows minimized it
+AFTER-LEAVE     placement=Maximized        iconified=true    <- and it stayed there
+```
+
+The replacement is an **undecorated second window** the size of the screen the main window is on,
+always-on-top while it exists so it covers the taskbar. It is an ordinary window, so it behaves like
+one: nothing minimizes it, and closing it is closing a window. This is what every video player on
+Windows actually does.
+
+It is only possible because of how the picture is drawn. libvlc renders into a buffer that Compose
+paints as an ordinary image, so the video is not an AWT component nailed to one window — moving it
+between windows costs nothing and does not interrupt playback. The browsing window carries on
+existing behind it, which is what keeps every piece of screen state alive across a toggle;
+recreating the main window instead, which is the only way to undecorate a live one, would throw all
+of it away. (`ComposeWindow.dispose()` was tried: the container is disposed permanently and the
+window cannot be shown again.)
+
+Both windows share **one** key handler, because a client where space pauses in one window and types
+a space in the other would be worse than one with no keys at all. `F1` draws its panel over whichever
+window is on top.
+
+### Keys
+
+Space, left, right, up, down, `M`, `F`, `C`, escape, `F1`, and `PageUp`/`PageDown` — pause, skip back
+and forward, volume, mute, fullscreen, fill or fit the picture, close what is open, the key list, and
+step through what else is playable. `Ctrl+F` puts the caret in the search box.
+
+**How far the two skip keys go is a setting**, in Settings under Playback, and the same numbers drive
+the two round buttons under the picture. Ten and thirty are right for a film and wrong for a match;
+the list of keys reads the chosen values back, so it cannot end up promising ten seconds to someone
+who asked for forty-five.
+
+**Every key except escape can be changed.** Settings makes each row a button: click it, press the key
+you want. Only the changed ones are stored, so a better default in a later release still reaches
+anyone who has not overridden that particular key. Taking a key that another shortcut had leaves that
+one **unset** rather than silently sharing it — two shortcuts on one key means one of them stops
+working and which one depends on declaration order, a rule no viewer can see. Escape is excluded on
+purpose: it is what cancels a capture and what closes the panel over a film, and rebinding it there
+is how someone locks themselves in. While a capture is waiting the window stops acting on keys
+entirely, or pressing space to bind it would pause the film instead.
+
+They are handled at the **window**, so they work wherever the pointer last was. The window sees every
+key before the focused control does, which is why the playing keys are gated — and the gate is now
+**whether the player is on screen**, not whether it holds media. Those are different questions: media
+outlives the screen that shows it, so the old gate let a space bar pressed in a search box pause a
+film the viewer had walked away from. Escape, `Ctrl+F` and `F1` are the deliberate exceptions —
+fullscreen has no title bar and escape is the key everyone reaches for, and the other two are about
+finding things rather than about playback.
+
+**The list is one value, not three.** It used to exist three times over — the `when` block that
+actually runs, a paragraph in Settings, and this page — with nothing checking any of them against the
+others. A list of keys that lies is worse than no list: someone presses the key, nothing happens, and
+they stop trusting the rest of it. So `Shortcut` in `:desktop` is the list, the window's handler
+dispatches over it with a `when` the compiler requires to be exhaustive, and the screens that show
+the keys read the same entries. Adding a key without giving it an action does not compile, and no
+screen can offer one that does nothing. This page is now the only copy that can still drift, and it
+is the one a viewer never sees.
+
+Matching is on the modifier as well as the key rather than merely tolerating it, which is what keeps
+`Ctrl+F` and `F` apart without depending on their order. It also means `Ctrl+M` no longer mutes: a
+modifier the client does not claim is left for the control that might want it.
+
+The rule is tested in `KeyboardShortcutsTest` — a playing key is not claimed while the player is not
+on screen, escape and `F1` do not wait for a stream, no two entries answer the same press, a stored
+binding for a shortcut this version does not have is ignored, and escape cannot be rebound even by a
+file that says it was. That is the bug class this once shipped: the space bar paused the player
+instead of reaching the filter field. The rules take a key code and its modifiers rather than a
+Compose event, which is what lets all of it be tested without a window or an event queue.
+
+### Where the keys are written down
+
+Settings has a **Keyboard** card listing them, and `F1` puts the same list over whatever is on
+screen. Both are needed: Settings is where someone looks to find out what a program can do, and
+fullscreen playback has no Settings to walk to — which is exactly where not knowing the keys hurts.
+The overlay closes on the button, on `F1` again, on escape, and on a click anywhere, because a panel
+over fullscreen video that cannot be dismissed is a panic.
+
+### Remembered audio and subtitle language
+
+The same idea as the phone's, over a different track list. A provider hands the same series out with
+four audio tracks in no consistent order, so the track libvlc picks on its own is whichever the file
+lists first, and choosing again every episode is the friction this removes.
+
+The rules are `:shared`'s and already tested; what the desktop had to add is the **language of a
+libvlc track**, which is not in the list the track menu is built from. The selectable descriptions
+and the parsed track information are two different libvlc lists, joined here by id — a track the two
+do not agree on simply has no language, which degrades to "let the player decide" rather than to a
+wrong choice.
+
+Matching is not string equality. ISO 639 has **two** three-letter codes for a dozen major languages —
+German is `ger` bibliographically and `deu` terminologically — and providers use whichever their muxer
+wrote. Someone who chose `ger` on one film and is handed `deu` on the next has, as far as anyone but
+a computer is concerned, already chosen. Two-letter tags are expanded to three, region is ignored,
+and `und`/`zxx` are dropped rather than remembered. Nothing matching is not a failure to retry: a
+title that does not carry the preferred language plays in what it has.
+
+The menu names the **language** rather than repeating the container. libvlc describes a track the way
+the muxer did — `Track 1 - [Deutsch]`, `Audio - [eng]` — and where the language is known that is what
+the viewer is choosing, so that is what it says, in one vocabulary instead of the provider's several.
+Except where two tracks would then read alike: a film with German stereo and German 5.1 must not
+offer *German* twice, so a name that is not unique carries the container's description after it.
+Disambiguating only where it is needed keeps the common case short, and a track with no language at
+all keeps what libvlc said, because there is nothing better to call it.
+
+Only a **hand-picked** track is learned, which is the rule that matters: what libvlc selected on its
+own must never reach the preferences, or a film carrying nothing but French audio would make French
+the preference for everything afterwards without anyone having asked.
+
+The preference lives in the desktop's own `preferences.json` rather than in the export, because the
+phone keeps its own — learned from its own player, over its own track lists — and the two are about
+different things.
+
+Settings shows both of them, in words rather than tags, and offers to forget them. A preference that
+learns itself and cannot be seen or undone is one a viewer has to guess at; *Whatever the stream
+offers* is shown for no preference, which is a different state from having chosen, and **Off** for
+subtitles deliberately turned off, which is a decision rather than an absent language.
+
+### When nothing arrives
+
+A refused stream used to be a black rectangle with working controls — a dead channel, an account at
+its connection limit and a title the provider no longer has all looked like a picture that had not
+arrived yet. Two silences are distinguished now:
+
+- **libvlc says it gave up.** Reported at once, from its own event thread, which only ever assigns a
+  flag — vlcj is explicit that calling back into the player from an event handler can deadlock.
+
+  It says only *that* it gave up. The event carries no reason — `error(MediaPlayer)` has no other
+  argument — and `libvlc_errmsg` is thread-local to the last call, which is not something to read
+  from an event thread. So the client does not invent one. The single exception is an account it
+  already knows has **expired**: that is a fact it holds rather than a guess about a failure it
+  cannot see into, and it is named.
+- **Nothing is said and no frame comes.** After twenty seconds the client admits it does not know
+  which of the two it is, in those words. Twenty is long enough for a slow provider opening a 4K
+  stream and short enough that nobody sits there wondering.
+- **A picture that was moving has stopped.** Both of the above are about *opening* a stream, and
+  neither could ever fire again afterwards: the test for "all is well" is that the player is playing
+  or has a position at all, and once a stream has produced one frame that stays true for the rest of
+  the film. So a provider dropping the connection forty minutes in had no answer at all — a frozen
+  frame, working controls, and no explanation, which is the same complaint the two messages above
+  were written to fix, arriving at a different moment.
+
+  `StallWatch` is the narrow test for it: the player says it is playing while its clock stands still.
+  A **paused** player is not playing and can never be called stalled, nor can one that has not
+  started; what is left is a stream that has died or one rebuffering, and fifteen seconds separates
+  those — far longer than any rebuffer, far shorter than a viewer's patience with a stopped picture.
+
+None of the three stops the player, so a picture that arrives — or comes back — clears the message by
+itself. *Try again* is offered where asking again can change the answer, and not where it cannot — a
+missing libvlc gets the message and no button.
+
+### Writing down where you got to
+
+Five things write a position, and only one of them is on a timer. Going back, switching title,
+closing the window and signing out each write immediately and unconditionally — those are the last
+chance the position gets, and a write skipped there because it looked like the one before it is a
+write that never happens.
+
+Two of the five **wait** for the write rather than launching it: closing the window and signing out.
+Both end the composition in the same breath, and a coroutine launched into a scope being torn down
+finishes nowhere — so a film left mid-way and then signed out of lost up to ten seconds, or, if it
+had only just started, had no position at all. The back button and a change of section launch and
+carry on, because the screen is still there afterwards.
+
+The closing window waits for **more than the position**. Every mark — a heart, a bookmark, a title
+crossed off, an imported file — updates the state in memory and launches its write without waiting,
+which is right while the client is running and wrong at the end of it: the coroutine dispatchers run
+on daemon threads, so a mark set a moment before the window closes is a write the exiting process has
+no reason to finish. One call covers both, folding the position into the document before it goes
+down, and it is available whenever the browsing screen is rather than only while something plays —
+which is what the position-shaped version of it got wrong.
+
+The timer is the fourth, every ten seconds, and it exists for the ways an evening ends that nothing
+else covers: a crash, a power cut, a laptop lid. It now asks first whether there is anything to
+write. Without that the answer was always yes: a film left paused rewrote the whole user-data file
+every ten seconds to record that nothing had happened, and recomposed the screen each time for the
+same nothing.
+
+**The Android app has refused a repeated checkpoint from the beginning** — `WatchProgressWriter`
+drops one equal to the last — and the desktop simply never inherited the rule when it got its own
+loop. `WatchProgressPolicy.isWorthWriting` is that rule in `:shared`, where both can reach it, and it
+is a little stronger than exact equality because the desktop reads a live libvlc clock that inches
+forward while a stream stalls: a second of movement is the threshold, measured in **both**
+directions, since seeking backwards moves the position as truly as playing forwards does. The
+duration is part of the question too — it is what a progress bar divides by, and libvlc does not
+always know it in the first seconds, so a rule watching only the position could hold a zero in place
+and read as a bar stuck empty.
+
+### One episode leads to the next
+
+Thirty seconds from the end of an episode a card offers what follows, and at the end it starts by
+itself. Episodes only: a category is not a playlist. This needed a rule of its own in `:shared`,
+because `isCompleted` answers "is this still worth resuming" and says yes three minutes before the
+credits — handing the next episode over at that moment would cut the last three minutes off every
+one. `hasReachedEnd` asks the narrower question with a two-second tolerance, since a provider's
+container routinely ends a second short of the duration it advertises.
+
+### The buffer is not the picture
+
+**Found on 21 August 2026, the first time this client was ever made to decode anything locally.**
+`tools/fake-provider.ps1 -MediaFile` will serve a real file, so a throwaway probe drove the real
+player through the real URL factory and reported what came back. Most of it was right — first frame
+in 306ms, correct length, seekable, seek lands, pause holds the clock, resume advances it, two audio
+tracks — and one number was not.
+
+The frame sink reported **1280x738 for a 1280x720 file**. libvlc calls the buffer-format callback
+**three times** for one medium — 1280x720, 1280x720, then 1280x738 — and it writes into the last
+one. The client took that as the picture's size, so every video was drawn eighteen rows too tall.
+Encoding the luma plane and comparing row means showed what those rows are: each one identical,
+spread 0.0, against a spread of 13.7 across the picture. Filler.
+
+The same +18 appeared at another size (360 → 386 through 368), so it is a constant, not alignment.
+
+**The fix is two sizes instead of one.** The buffer is allocated exactly as libvlc asked, because it
+writes there and anything smaller would be a write outside memory this client owns. The *image* is
+built from the source's own dimensions — `videoDimension()`, which the player knows independently
+and which stays right when a stream changes resolution mid-play — at the picture's height and the
+**buffer's stride**, which is what makes one a window onto the other rather than a copy of it. Where
+the source size is not known yet, the asked-for size is the fallback: a band at the bottom is better
+than a picture that is not drawn at all.
+
+Verified by comparing per-row means against the same frame taken out of the file by ffmpeg: the flat
+rows and the varying ones line up, which a wrong stride could not produce — it would shear the
+picture and even out every row. `FrameSinkTest` holds the rule.
+
+**Why nobody had seen it**: the band sat behind the control bar, which used to be permanent. Making
+the chrome go away is what would have revealed it.
+
+### The chrome goes away
+
+Controls that never leave are the whole of what a viewer notices about a client in fullscreen: the
+picture is the thing, and a violet strip across the bottom of it is not. Three still seconds and the
+title, the back arrow and the control bar fade out; the first movement of the pointer brings them
+back, and the pointer itself goes with them — a cursor parked on a still frame is the same complaint
+as a bar parked on one.
+
+Four states refuse to hide, and they have one thing in common: in each of them the controls are what
+is being used rather than what is in the way. A **paused** film is one somebody stopped on purpose; a
+**failure** is a message and a *Try again*; an **open switch panel** is a list being read; and a
+title that has **not produced a frame** yet is a spinner, not a picture. `chromeMayHide` is that rule
+with a test each, because chrome that hides while someone is reaching for it is worse than chrome
+that stays.
+
+**A click on the picture pauses**, which is what a click on a picture means everywhere else. It sits
+on the video surface rather than on the box around it, so a click landing on the control bar — even
+on the empty space between its buttons — is not also a pause. It doubles as the way back if a
+pointer move somehow does not arrive: a click always brings the chrome back, so the hidden state can
+never be a trap.
+
+There is deliberately **no double-click for fullscreen**, tempting as the pairing is. Compose would
+have to hold every single click back for the double-tap timeout to see whether a second one
+followed, and a pause that arrives a third of a second late is a worse trade than a keyboard
+shortcut for something `F` and a button already do.
+
+### Starting is said out loud
+
+Between asking for a stream and the first frame there was nothing at all: a black rectangle with
+working controls, which reads as a client that has done nothing. On a 4K film from a busy provider
+that stretch is several seconds. A spinner and *Starting…* now sit over the picture until a frame has
+actually arrived — `FrameSink.latest`, read by the same poll that reads the position, rather than
+libvlc's own "playing" flag, which is true while it is still opening the stream. The watchdog behind
+it is unchanged and still speaks up when the wait turns into a failure; this only covers the ordinary
+case where it is about to work.
+
+The rail is also gone while something is playing. It used to sit beside a playing film taking
+ninety-six pixels of it — a strip of the picture spent on the list of things nobody is watching — and
+it made the difference between playing and playing full-screen look like nothing at all.
+
+### What the desktop player does not have
+
+Not omissions to be fixed silently, but things the Android player has and this one does not:
+
+- no Picture-in-Picture, no background audio, no notification or media-session integration;
+- no subtitle styling — libvlc has its own rendering and its own defaults, and neither has been
+  touched;
+- no gestures;
+- no brightness control, which is a phone idea rather than a desktop one.
+
+None of the desktop player has been used against the real provider yet beyond signing in and
+browsing; the checks that would establish it are listed under *The Windows client* in
+`docs/CLAUDE_HANDOFF.md` — the maintainer's working notes, kept with the development repository
+rather than published — and nothing here should be recorded as working until they come back.
 
 ## Device results
 
@@ -492,15 +1007,27 @@ The Phase 3 base playback flow and alpha-2 gesture/cache checks were successfull
 46. After an episode change, press Home and confirm Picture-in-Picture still appears — this was the case that stopped working. Return to the app, leave the player, and confirm the system bars come back on the screen behind it. The PiP round trip is the part that matters here: without it the bars returned anyway.
 47. Play something whose shape does not match your screen and use the picture-size control in the top-right corner. Confirm it walks Fit, Zoom, Stretch and back; that Zoom fills the screen by cropping the edges while Stretch fills it by distorting; and that leaving the player and returning reopens in the mode you left it in.
 48. Set the brightness slider somewhere obvious, leave the player, and force-stop the app. Reopen it and start something: the player must come up at the brightness you left, not the device's. Then drag it somewhere else mid-episode and confirm it stays where you put it rather than snapping back to the stored value.
+49. On a title with more than one audio language, open the stock track menu and pick a language. Leave the player, start something else that carries the same language, and confirm it comes up in that language without touching the menu. This is the whole point of the feature and it cannot be checked against the synthetic provider, which serves one audio track. **Known sources on the reference provider, found by probing on 17 August 2026:** the Nordic 4K sports channel carrying four audio tracks (Swedish, Norwegian, Danish, Finnish) is the best one, and two Polish 4K sports channels carry two tracks each. Search Live for `sport` and look in the 4K category. No sampled *film* had more than one audio track, so do not spend time looking there.
+50. Turn subtitles off through the track menu's **None** entry. Start something else that carries subtitles and confirm they stay off. Then pick a subtitle language and confirm the next title comes up with that language, and that Settings shows both the audio and the subtitle language under **Audio and subtitle language**.
+51. Play something that does **not** carry the remembered language and confirm it plays in whatever the stream offers, that nothing is silent or missing, and that the remembered language is still shown in Settings afterwards — a title without it must not clear it.
+52. Use **Clear** on that Settings row, confirm the row goes back to *Not set*, then pick the same language again in the player and confirm Settings shows it again. Re-picking what was just cleared is the case that the writer's duplicate rule could otherwise swallow.
+53. Pick an audio language on a live channel, leave the player, and confirm it applies to the next channel that carries it. Live stores no watch position, so this is the one place where the two captures do not travel together.
+54. With subtitles on, walk **Settings → Subtitle size** through every step and confirm the text in the player changes accordingly, that **Normal** looks like the size before this build, and that leaving and reopening the player keeps the choice. **Pick a `subrip` track for this.** On the reference provider most films carry both text and bitmap subtitle tracks, and a bitmap one cannot be styled at all — see the note under *How subtitles look*. Films are plentiful here: every sampled title in the first movie category carried between 12 and 35 subtitle tracks.
+55. Walk **Subtitle background** through all five. Confirm *Plain text* has nothing behind it, that *Drop shadow* and *Outlined* differ visibly from it and from each other, that *Behind a box* draws a dark box behind the text only and not a band across the screen, and that each survives leaving the player.
+56. Change either setting **while the player is open** — leave to Settings and come back without stopping playback — and confirm the change is already applied rather than needing a restart.
+57. Set Android's own caption size and style under Settings → Accessibility → Caption preferences to something obvious, then set both app rows back to **System default** and confirm the subtitles follow the platform. This is the accessibility case and it is the one that must not regress.
+58. On a stream whose subtitles carry their own styling, confirm that choosing a background overrides it, and that switching back to **System default** hands it back.
+59. Pick a **bitmap** subtitle track — one of the PGS tracks on a 4K film — and confirm it renders at all, and that the size and background settings visibly do nothing to it. Both halves of that are the expected result, not a defect; the open question is only whether it renders. Then try a `dvd_subtitle` track and a channel's `dvb_teletext` track and record whether anything appears. If a track shows nothing, that is worth knowing before a viewer finds it.
 
 Test on at least one Samsung device and one emulator/reference device when preparing a release; vendor decoder and PiP behavior can differ.
 
 ## Not implemented yet
 
+These are the Android player's gaps; the desktop player's are listed in its own section above.
+
 - Dedicated VOD seek buttons.
-- Remembered audio/subtitle language preferences and custom subtitle styling.
-- Persistent playback-speed selection and aspect-ratio modes. Press-and-hold temporary speed is implemented.
-- A remembered playback speed. The press-and-hold speed is a separate, deliberately temporary setting. A first attempt is described under *Not yet remembered* below.
+- A subtitle **text colour** choice, and a preview of the chosen style. Size and background are implemented; both omissions are deliberate and the reasons are under *How subtitles look*.
+- A remembered playback speed. The press-and-hold speed is a separate, deliberately temporary setting. A first attempt is described under *Not yet remembered: playback speed* above. Aspect-ratio modes and the remembered brightness, once listed here, are implemented.
 - Previous/next live channel actions and in-player channel/EPG drawer.
 - Internal browse-over-video mini-player.
 - Optional audio-only background mode.

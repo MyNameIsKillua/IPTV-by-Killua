@@ -4,6 +4,7 @@ import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.LiveChannel
 import dev.killua.iptv.domain.model.MovieSummary
 import dev.killua.iptv.domain.model.SeriesEpisode
+import dev.killua.iptv.domain.model.TrackLanguageSelection
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -46,4 +47,11 @@ interface PlaybackStateSource {
 
     /** Main thread only; see [PlayerConnection.capturePosition]. */
     fun capturePosition(): PlaybackPosition?
+
+    /**
+     * The audio and subtitle languages picked by hand in the track menu, if any.
+     *
+     * Main thread only, for the same reason as [capturePosition].
+     */
+    fun captureTrackLanguages(): TrackLanguageSelection?
 }

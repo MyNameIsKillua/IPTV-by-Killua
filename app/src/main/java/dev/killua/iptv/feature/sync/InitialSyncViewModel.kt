@@ -26,6 +26,14 @@ data class InitialSyncUiState(
     val seriesCount: Int = 0,
     /** Libraries that were already cached and are therefore not downloaded again. */
     val cachedSteps: Set<SyncStep> = emptySet(),
+    /**
+     * The steps this account has at all, which the screen lists.
+     *
+     * A playlist has one. Its two missing libraries are absent rather than instantly ticked: a row
+     * that appears and completes in the same frame is a row that says something happened, and
+     * nothing did.
+     */
+    val steps: List<SyncStep> = SyncStep.entries,
     val isRunning: Boolean = false,
     val isFinished: Boolean = false,
     val errorMessage: String? = null,
@@ -66,7 +74,13 @@ class InitialSyncViewModel(
     private val movieRepository: MovieRepository,
     private val seriesRepository: SeriesRepository,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(InitialSyncUiState())
+    /**
+     * What this account can be asked for. See [InitialSyncUiState.steps].
+     */
+    private val steps: List<SyncStep> =
+        if (account.isPlaylist) listOf(SyncStep.Channels) else SyncStep.entries
+
+    private val mutableState = MutableStateFlow(InitialSyncUiState(steps = steps))
     val state: StateFlow<InitialSyncUiState> = mutableState.asStateFlow()
 
     init {
@@ -98,7 +112,7 @@ class InitialSyncViewModel(
                 }
 
                 mutableState.update { it.copy(step = SyncStep.Movies) }
-                if (SyncStep.Movies !in cached) {
+                if (SyncStep.Movies in steps && SyncStep.Movies !in cached) {
                     val movies = movieRepository.refresh(account.id) { count ->
                         mutableState.update { it.copy(movieCount = count) }
                     }
@@ -106,7 +120,7 @@ class InitialSyncViewModel(
                 }
 
                 mutableState.update { it.copy(step = SyncStep.Series) }
-                if (SyncStep.Series !in cached) {
+                if (SyncStep.Series in steps && SyncStep.Series !in cached) {
                     val series = seriesRepository.refresh(account.id) { count ->
                         mutableState.update { it.copy(seriesCount = count) }
                     }

@@ -77,11 +77,20 @@ fun LoginRoute(viewModel: LoginViewModel) {
         onServerChange = viewModel::setServer,
         onUsernameChange = viewModel::setUsername,
         onPasswordChange = viewModel::setPassword,
-        onM3uUrlChange = viewModel::setM3uUrl,
+        onM3uUrlChange = viewModel::setProviderLink,
+        onPlaylistUrlChange = viewModel::setPlaylistUrl,
         onTogglePassword = viewModel::togglePasswordVisibility,
-        onToggleM3uUrl = viewModel::toggleM3uUrlVisibility,
+        onToggleM3uUrl = viewModel::toggleProviderLinkVisibility,
         onTestConnection = viewModel::testConnection,
-        onConnect = viewModel::connect,
+        // A playlist has nothing to authenticate, so it takes its own path rather than being
+        // squeezed through the one that turns fields into server-plus-credentials.
+        onConnect = {
+            if (state.loginMethod == LoginMethod.Playlist) {
+                viewModel.connectPlaylist()
+            } else {
+                viewModel.connect()
+            }
+        },
     )
 }
 
@@ -95,6 +104,7 @@ fun LoginScreen(
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onM3uUrlChange: (String) -> Unit,
+    onPlaylistUrlChange: (String) -> Unit,
     onTogglePassword: () -> Unit,
     onToggleM3uUrl: () -> Unit,
     onTestConnection: () -> Unit,
@@ -162,21 +172,31 @@ fun LoginScreen(
                     selected = state.loginMethod == LoginMethod.Credentials,
                     onClick = { onLoginMethodChange(LoginMethod.Credentials) },
                     enabled = !state.isConnecting,
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    label = { Text("Credentials") },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                    label = { Text("Account") },
                 )
                 SegmentedButton(
-                    selected = state.loginMethod == LoginMethod.M3uUrl,
-                    onClick = { onLoginMethodChange(LoginMethod.M3uUrl) },
+                    selected = state.loginMethod == LoginMethod.ProviderLink,
+                    onClick = { onLoginMethodChange(LoginMethod.ProviderLink) },
                     enabled = !state.isConnecting,
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    label = { Text("M3U URL") },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                    // Was "M3U URL", which is what it serves and not what it is. It means the
+                    // `get.php` line a provider issues, and the old name sent an actual `.m3u`
+                    // address into the wrong field.
+                    label = { Text("Provider link") },
+                )
+                SegmentedButton(
+                    selected = state.loginMethod == LoginMethod.Playlist,
+                    onClick = { onLoginMethodChange(LoginMethod.Playlist) },
+                    enabled = !state.isConnecting,
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    label = { Text("Playlist") },
                 )
             }
             Spacer(Modifier.height(18.dp))
 
-            if (state.loginMethod == LoginMethod.Credentials) {
-                CredentialFields(
+            when (state.loginMethod) {
+                LoginMethod.Credentials -> CredentialFields(
                     state = state,
                     onPlaylistNameChange = onPlaylistNameChange,
                     onServerChange = onServerChange,
@@ -184,11 +204,28 @@ fun LoginScreen(
                     onPasswordChange = onPasswordChange,
                     onTogglePassword = onTogglePassword,
                 )
-            } else {
-                M3uUrlField(
+                LoginMethod.ProviderLink -> M3uUrlField(
                     state = state,
                     onM3uUrlChange = onM3uUrlChange,
                     onToggleM3uUrl = onToggleM3uUrl,
+                )
+                // Not masked, unlike the provider link above. A public playlist address is not a
+                // secret, and hiding it makes the one thing that goes wrong here - a typo - harder
+                // to spot. A provider's own playlist address *is* a credential, and the field
+                // beside this one is where that belongs.
+                LoginMethod.Playlist -> OutlinedTextField(
+                    value = state.playlistUrl,
+                    onValueChange = onPlaylistUrlChange,
+                    label = { Text("Playlist address") },
+                    supportingText = {
+                        Text(
+                            "An .m3u address. Channels only - a playlist has no films, series or " +
+                                "guide, so those stay away while one is open.",
+                        )
+                    },
+                    singleLine = true,
+                    enabled = !state.isConnecting,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
@@ -214,6 +251,11 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Not offered for a playlist. Test exists so an HTTP account can be acknowledged
+                // before its credentials travel in the clear; a playlist has no credentials, and
+                // signing in opens the address anyway - so the button would either do nothing or
+                // do the same thing twice.
+                if (state.loginMethod != LoginMethod.Playlist) {
                 OutlinedButton(
                     onClick = onTestConnection,
                     enabled = state.canSubmit,
@@ -224,6 +266,7 @@ fun LoginScreen(
                     } else {
                         Text("Test")
                     }
+                }
                 }
                 Button(
                     onClick = onConnect,
@@ -350,7 +393,7 @@ private fun M3uUrlField(
     onToggleM3uUrl: () -> Unit,
 ) {
     OutlinedTextField(
-        value = state.m3uUrl,
+        value = state.providerLink,
         onValueChange = onM3uUrlChange,
         modifier = Modifier
             .fillMaxWidth()
@@ -367,16 +410,16 @@ private fun M3uUrlField(
         trailingIcon = {
             IconButton(onClick = onToggleM3uUrl, enabled = !state.isConnecting) {
                 Icon(
-                    imageVector = if (state.m3uUrlVisible) {
+                    imageVector = if (state.providerLinkVisible) {
                         Icons.Default.VisibilityOff
                     } else {
                         Icons.Default.Visibility
                     },
-                    contentDescription = if (state.m3uUrlVisible) "Hide M3U URL" else "Show M3U URL",
+                    contentDescription = if (state.providerLinkVisible) "Hide M3U URL" else "Show M3U URL",
                 )
             }
         },
-        visualTransformation = if (state.m3uUrlVisible) {
+        visualTransformation = if (state.providerLinkVisible) {
             VisualTransformation.None
         } else {
             PasswordVisualTransformation()

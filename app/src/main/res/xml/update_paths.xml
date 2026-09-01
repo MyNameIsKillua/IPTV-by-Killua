@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one directory the update provider may share, and nothing above it.
+
+  `cache-path` is the app's own cache, which the system may clear at any time - correct for a file
+  that exists only until the installer has read it.
+-->
+<paths>
+    <cache-path
+        name="updates"
+        path="updates/" />
+</paths>

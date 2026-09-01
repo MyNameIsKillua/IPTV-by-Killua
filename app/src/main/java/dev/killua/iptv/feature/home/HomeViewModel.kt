@@ -2,6 +2,7 @@ package dev.killua.iptv.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.killua.iptv.domain.browse.RecentlyAdded
 import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.ContinueWatchingEntry
 import dev.killua.iptv.domain.model.LiveChannel

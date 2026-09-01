@@ -59,6 +59,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import dev.killua.iptv.domain.model.MovieSortOrder
 import dev.killua.iptv.domain.model.MovieSummary
+import dev.killua.iptv.ui.components.releasesFocusVertically
 import dev.killua.iptv.ui.components.ContinueWatchingRow
 import dev.killua.iptv.ui.components.PosterCard
 import dev.killua.iptv.ui.components.PosterGrid
@@ -187,7 +188,8 @@ private fun SearchField(
         onValueChange = onValueChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .releasesFocusVertically(),
         singleLine = true,
         placeholder = { Text("Search movies") },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },

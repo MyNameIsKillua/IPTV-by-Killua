@@ -22,19 +22,20 @@ import okhttp3.ResponseBody
 import retrofit2.Retrofit
 import java.io.IOException
 import java.io.InputStream
+import dev.killua.iptv.data.repository.LiveListingSource
 
 class XtreamRemoteDataSource(
     retrofit: Retrofit,
     private val failureMapper: NetworkFailureMapper,
     private val parser: XtreamJsonParser = XtreamJsonParser(),
-) {
+) : LiveListingSource {
     private val api = retrofit.create(XtreamApi::class.java)
 
     suspend fun authenticate(credentials: XtreamCredentials): RemoteAccount = withContext(Dispatchers.IO) {
         parser.parseAccount(request(credentials, action = null, authentication = true))
     }
 
-    suspend fun liveCategories(credentials: XtreamCredentials): List<LiveCategory> = withContext(Dispatchers.IO) {
+    override suspend fun liveCategories(credentials: XtreamCredentials): List<LiveCategory> = withContext(Dispatchers.IO) {
         parser.parseCategories(request(credentials, action = "get_live_categories"))
     }
 
@@ -45,7 +46,7 @@ class XtreamRemoteDataSource(
      * response nor the parsed collection may be held whole. [block] receives a lazy sequence and
      * is expected to consume it in batches; the sequence is only valid until it returns.
      */
-    suspend fun <T> withLiveChannels(
+    override suspend fun <T> withLiveChannels(
         credentials: XtreamCredentials,
         block: suspend (Sequence<LiveChannel>) -> T,
     ): T = withContext(Dispatchers.IO) {

@@ -46,7 +46,7 @@ class LoginViewModelTest {
             server = "https://private.example",
             username = "private-user",
             password = "private-password",
-            m3uUrl = "https://private.example/get.php?username=private-user&password=private-password",
+            providerLink = "https://private.example/get.php?username=private-user&password=private-password",
         ).toString()
 
         assertThat(rendered).contains("REDACTED")
@@ -59,8 +59,8 @@ class LoginViewModelTest {
     fun `M3U test passes only extracted values to repository`() = runTest(dispatcher.scheduler) {
         val repository = FakeSessionRepository()
         val viewModel = LoginViewModel(repository)
-        viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-        viewModel.setM3uUrl(
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink(
             "https://example.com/provider/get.php?output=ts&password=p%40ss%2Bword&username=Killua%20Zoldyck",
         )
 
@@ -119,13 +119,13 @@ class LoginViewModelTest {
             }
         }
         val viewModel = LoginViewModel(repository)
-        viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-        viewModel.setM3uUrl("https://example.com/get.php?username=old&password=secret")
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink("https://example.com/get.php?username=old&password=secret")
         viewModel.testConnection()
         runCurrent()
         assertThat(viewModel.state.value.isTesting).isTrue()
 
-        viewModel.setM3uUrl("https://example.com/get.php?username=new&password=secret")
+        viewModel.setProviderLink("https://example.com/get.php?username=new&password=secret")
         gate.complete(Unit)
         advanceUntilIdle()
 
@@ -138,14 +138,14 @@ class LoginViewModelTest {
     fun `successful M3U login clears the raw secret link`() = runTest(dispatcher.scheduler) {
         val repository = FakeSessionRepository()
         val viewModel = LoginViewModel(repository)
-        viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-        viewModel.setM3uUrl("https://example.com/get.php?username=user&password=secret")
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink("https://example.com/get.php?username=user&password=secret")
 
         viewModel.connect()
         advanceUntilIdle()
 
         assertThat(repository.lastLoginAttempt?.server).isEqualTo("https://example.com/")
-        assertThat(viewModel.state.value.m3uUrl).isEmpty()
+        assertThat(viewModel.state.value.providerLink).isEmpty()
         assertThat(viewModel.state.value.password).isEmpty()
         assertThat(viewModel.state.value.server).isEmpty()
         assertThat(viewModel.state.value.username).isEmpty()
@@ -164,15 +164,15 @@ class LoginViewModelTest {
             val viewModel = LoginViewModel(repository)
             val original = "https://example.com/get.php?username=old&password=secret"
             val replacement = "https://example.com/get.php?username=new&password=other"
-            viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-            viewModel.setM3uUrl(original)
+            viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+            viewModel.setProviderLink(original)
 
             viewModel.connect()
             assertThat(viewModel.state.value.isConnecting).isTrue()
-            viewModel.setM3uUrl(replacement)
+            viewModel.setProviderLink(replacement)
             viewModel.selectLoginMethod(LoginMethod.Credentials)
-            assertThat(viewModel.state.value.loginMethod).isEqualTo(LoginMethod.M3uUrl)
-            assertThat(viewModel.state.value.m3uUrl).isEqualTo(original)
+            assertThat(viewModel.state.value.loginMethod).isEqualTo(LoginMethod.ProviderLink)
+            assertThat(viewModel.state.value.providerLink).isEqualTo(original)
 
             runCurrent()
             gate.complete(Unit)
@@ -180,20 +180,20 @@ class LoginViewModelTest {
 
             assertThat(repository.lastLoginAttempt?.username).isEqualTo("old")
             assertThat(viewModel.state.value.isConnecting).isFalse()
-            assertThat(viewModel.state.value.m3uUrl).isEmpty()
+            assertThat(viewModel.state.value.providerLink).isEmpty()
         }
 
     @Test
     fun `cleartext acknowledgement is invalidated by any link edit`() = runTest(dispatcher.scheduler) {
         val repository = FakeSessionRepository()
         val viewModel = LoginViewModel(repository)
-        viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-        viewModel.setM3uUrl("http://example.com/get.php?username=user&password=secret&output=ts")
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink("http://example.com/get.php?username=user&password=secret&output=ts")
         viewModel.testConnection()
         advanceUntilIdle()
         assertThat(viewModel.state.value.connectionTested).isTrue()
 
-        viewModel.setM3uUrl("http://example.com/get.php?username=user&password=secret&output=m3u8")
+        viewModel.setProviderLink("http://example.com/get.php?username=user&password=secret&output=m3u8")
         viewModel.connect()
         advanceUntilIdle()
 
@@ -206,14 +206,56 @@ class LoginViewModelTest {
     fun `generic playlist gets explicit local error without network call`() = runTest(dispatcher.scheduler) {
         val repository = FakeSessionRepository()
         val viewModel = LoginViewModel(repository)
-        viewModel.selectLoginMethod(LoginMethod.M3uUrl)
-        viewModel.setM3uUrl("https://example.com/channels.m3u")
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink("https://example.com/channels.m3u")
 
         viewModel.testConnection()
         advanceUntilIdle()
 
         assertThat(repository.testCallCount).isEqualTo(0)
         assertThat(viewModel.state.value.errorMessage).contains("Arbitrary M3U playlists are not supported yet")
+    }
+
+    @Test
+    fun `switching to a playlist leaves no secret from either other way in`() =
+        runTest(dispatcher.scheduler) {
+        val repository = FakeSessionRepository()
+        val viewModel = LoginViewModel(repository)
+        viewModel.setServer("https://provider.example/")
+        viewModel.setUsername("killua")
+        viewModel.setPassword("s3cret")
+        viewModel.selectLoginMethod(LoginMethod.ProviderLink)
+        viewModel.setProviderLink("https://provider.example/get.php?username=killua&password=s3cret")
+
+        viewModel.selectLoginMethod(LoginMethod.Playlist)
+
+        // Nothing typed for one way in may survive into another: the form is one screen, and a
+        // password left in a field is a password on screen.
+        val state = viewModel.state.value
+        assertThat(state.server).isEmpty()
+        assertThat(state.username).isEmpty()
+        assertThat(state.password).isEmpty()
+        assertThat(state.providerLink).isEmpty()
+        assertThat(state.providerLinkVisible).isFalse()
+    }
+
+    @Test
+    fun `a playlist address reaches the repository and the field is cleared afterwards`() =
+        runTest(dispatcher.scheduler) {
+        val repository = FakeSessionRepository()
+        val viewModel = LoginViewModel(repository)
+        viewModel.selectLoginMethod(LoginMethod.Playlist)
+        viewModel.setPlaylistName("Freier Test")
+        viewModel.setPlaylistUrl("  https://playlist.example/index.m3u  ")
+
+        viewModel.connectPlaylist()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertThat(repository.playlistLoginCount).isEqualTo(1)
+        // Trimmed, because a pasted address brings whitespace with it.
+        assertThat(repository.lastPlaylistUrl).isEqualTo("https://playlist.example/index.m3u")
+        assertThat(repository.lastDisplayName).isEqualTo("Freier Test")
+        assertThat(viewModel.state.value.playlistUrl).isEmpty()
     }
 
     private class FakeSessionRepository : SessionRepository {
@@ -249,6 +291,16 @@ class LoginViewModelTest {
             lastDisplayName = displayName
             lastLoginAttempt = Attempt(server, username, password)
             return loginOverride?.invoke(server, username, password) ?: account(server, username)
+        }
+
+        var lastPlaylistUrl: String? = null
+        var playlistLoginCount = 0
+
+        override suspend fun loginWithPlaylist(url: String, displayName: String): Account {
+            playlistLoginCount += 1
+            lastPlaylistUrl = url
+            lastDisplayName = displayName
+            return account(url, "")
         }
 
         override suspend fun reconnect(): Account = error("Not used")

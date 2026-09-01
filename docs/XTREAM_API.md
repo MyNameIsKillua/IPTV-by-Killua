@@ -21,9 +21,35 @@ The current adapter implements the common Xtream-compatible `player_api.php` sur
 
 The VOD listing and detail actions are cached and displayed by the Movies screens, and Movie media URLs are built and played by the Movie player.
 
-The Series rows are the adapter, parser, and URL-construction layer only. Nothing caches, displays, or plays a Series yet; that arrives with the Room and UI slices. They have never been exercised against a real provider.
+Series are cached, browsed and played on Android, and browsed and played on the desktop. The owner confirmed Movie browsing and playback, and Series browsing and episode playback, against their own provider through alpha 13.
 
 `get_short_epg` is implemented for one channel at a time. The whole-guide XMLTV file is deliberately not used: a provider with 60,000 channels would answer it with something the size of the listings this project already had to learn to stream, and a guide is only ever read one channel at a time.
+
+### What the desktop client asks for
+
+The Windows/macOS client speaks the same protocol through the same `:shared` parser and the same URL
+factory, so nothing about a provider's JSON is re-interpreted there. What differs is *which* requests
+it makes, and the difference is the whole reason it needs no database:
+
+| Purpose | Desktop | Note |
+| --- | --- | --- |
+| Authenticate/account info | Yes | Once, at sign-in; the account is never stored |
+| `get_live_categories`, `get_vod_categories`, `get_series_categories` | Yes | Once per destination, on entering it |
+| `get_live_streams`, `get_vod_streams`, `get_series` | **Only with a `category_id`** | Never uncategorised — see below |
+| `get_vod_info` | Yes | When a film's panel opens, and to name what was marked on the phone |
+| `get_series_info` | Yes | When a series is opened; the plot and every season come from that one answer |
+| `get_short_epg` | Yes | One channel at a time, capped at the viewer's own forty, cached for an hour |
+| Live, Movie and Episode media | Yes | Built by the shared factory, played by libvlc |
+
+**The uncategorised listing is never requested.** That single restraint is what removes the streaming
+parser, the batching, the six-figure de-duplication and the database from this client: a category on
+this provider holds tens of entries, so the response fits in memory by construction rather than by
+engineering. The cost is that the desktop cannot search the whole library — it searches the category
+names instead, which on a provider organised as `DE | SPORT` is how anyone finds anything anyway.
+
+Networking there is plain OkHttp rather than Retrofit, with the same posture: ten-second connect,
+twenty-five-second read, thirty-five-second call timeout, and **redirects disabled**, because these
+requests carry the account in their query string.
 
 ## Login input and normalization
 
@@ -216,7 +242,7 @@ For HTTP-only providers, test only on a trusted network and treat the warning as
 - No MAG/Stalker, arbitrary credential-free M3U playlist import, portal scraping, or DRM support. Credential-bearing Xtream `get.php`/`player_api.php` links are accepted only as an alternative way to enter the same account details.
 - No provider-specific headers/cookies or configurable user-agent mode. API calls use OkHttp's default; playback sends the fixed `KilluasIPTV/0.1` user agent.
 - No API redirect following.
-- Of the EPG actions only `get_short_epg` is used; there is no XMLTV import and no whole-guide download. Provider titles and descriptions are usually Base64 and sometimes plain, so both are accepted; an entry without usable `start_timestamp`/`stop_timestamp` values is dropped rather than placed from the offset-free `start`/`end` strings. VOD listing and detail actions work against the user's provider; VOD media URLs are exercised by Movie playback but have not yet been verified against a real provider. Series actions exist at the adapter level only and have never been exercised against a real provider.
+- Of the EPG actions only `get_short_epg` is used; there is no XMLTV import and no whole-guide download. Provider titles and descriptions are usually Base64 and sometimes plain, so both are accepted; an entry without usable `start_timestamp`/`stop_timestamp` values is dropped rather than placed from the offset-free `start`/`end` strings. VOD listing, detail and media actions, and the Series actions, have all been exercised against the owner's provider — Movie playback and Series episode playback were confirmed on hardware through alpha 13.
 - No server-side pagination; the standard full live arrays are downloaded on refresh.
 - Only `m3u8` and `ts` live URL layouts are generated.
 - Format selection happens before playback; a failed HLS URL is not automatically retried as TS, or vice versa.

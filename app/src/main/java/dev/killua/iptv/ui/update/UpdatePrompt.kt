@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.killua.iptv.AppContainer
 import dev.killua.iptv.core.update.UpdateInstaller
 import dev.killua.iptv.domain.update.UpdateStatus
@@ -44,8 +45,9 @@ fun UpdatePrompt(container: AppContainer) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var status by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Unknown) }
-    var dismissed by remember { mutableStateOf(false) }
+    // Read rather than owned: the launch check and *Check now* in settings both write here, and
+    // this is the one thing that draws the answer.
+    val status by container.updateStatus.collectAsStateWithLifecycle()
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -53,13 +55,18 @@ fun UpdatePrompt(container: AppContainer) {
 
     // Once per composition of the authenticated app, and the checker itself refuses to ask more
     // often than daily - so rotating the device or coming back from the player asks nothing.
-    LaunchedEffect(Unit) { status = container.updateChecker.check() }
+    LaunchedEffect(Unit) { container.checkForUpdate() }
 
     val available = status as? UpdateStatus.Available ?: return
-    if (dismissed) return
+
+    // Dismissing clears the shared answer rather than setting a flag here. A flag would survive
+    // *Check now*, so asking again would find the update and show nothing.
+    fun dismiss() {
+        container.updateStatus.value = UpdateStatus.Unknown
+    }
 
     AlertDialog(
-        onDismissRequest = { if (!busy) dismissed = true },
+        onDismissRequest = { if (!busy) dismiss() },
         title = { Text("Update available") },
         text = {
             Column {
@@ -129,7 +136,7 @@ fun UpdatePrompt(container: AppContainer) {
             }
         },
         dismissButton = {
-            TextButton(enabled = !busy, onClick = { dismissed = true }) { Text("Not yet") }
+            TextButton(enabled = !busy, onClick = { dismiss() }) { Text("Not yet") }
         },
     )
 }

@@ -542,6 +542,8 @@ private fun MainRoot(
                                     container.userDataExporter.export(accountId),
                                 )
                             },
+                            // Forced, because this one is a person asking rather than a launch.
+                            checkForUpdate = { container.checkForUpdate(force = true) },
                         )
                     },
                 )

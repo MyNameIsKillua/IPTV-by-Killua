@@ -46,9 +46,11 @@ import dev.killua.iptv.domain.repository.MovieRepository
 import dev.killua.iptv.domain.repository.SeriesRepository
 import dev.killua.iptv.domain.repository.SessionRepository
 import dev.killua.iptv.domain.repository.WatchlistRepository
+import dev.killua.iptv.domain.update.UpdateStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -140,6 +142,19 @@ class AppContainer(context: Context) {
         context = context.applicationContext,
         client = updateHttpClient,
     )
+
+    /**
+     * What the last check concluded, shared rather than owned by whoever ran it.
+     *
+     * Two things ask: the launch check, and *Check now* in settings. One prompt answers, and it
+     * lives above the navigation graph. Holding the answer here rather than inside the prompt is
+     * what lets a button on the settings screen make that prompt appear.
+     */
+    val updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Unknown)
+
+    /** Runs a check and publishes the result. [force] is a viewer asking, not a launch. */
+    suspend fun checkForUpdate(force: Boolean = false): UpdateStatus =
+        updateChecker.check(force).also { updateStatus.value = it }
 
     /**
      * Coil's process-wide loader for channel artwork. Video playback does not use this cache.

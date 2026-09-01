@@ -143,6 +143,9 @@ fun main() = application {
     var updateBusy by remember { mutableStateOf(false) }
     var updateProgress by remember { mutableStateOf(0f) }
     var updateProblem by remember { mutableStateOf<String?>(null) }
+    /** A check the viewer asked for, which is a different thing from the one at launch. */
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateCheckMessage by remember { mutableStateOf<String?>(null) }
     /**
      * The whole library, read once per sign-in and held for as long as this window is open.
      *
@@ -424,6 +427,30 @@ fun main() = application {
                         },
                         onImportUserData = { accept ->
                             chooseFile(window, save = false)?.let { file -> accept(file.readTextBounded()) }
+                        },
+                        checkingForUpdate = updateChecking,
+                        updateCheckMessage = updateCheckMessage,
+                        onCheckForUpdate = {
+                            updateChecking = true
+                            updateCheckMessage = null
+                            updateScope.launch {
+                                // Forced, because this one is a person asking rather than a launch.
+                                // The daily interval still governs the automatic check.
+                                val outcome = updateChecker.check(preferences, force = true)
+                                outcome.checkedAtMillis?.let {
+                                    preferences = preferences.copy(updateCheckedAtMillis = it)
+                                }
+                                updateStatus = outcome.status
+                                updateChecking = false
+                                updateCheckMessage = when (val status = outcome.status) {
+                                    is UpdateStatus.Available ->
+                                        "Version ${status.release.version} is available"
+                                    UpdateStatus.UpToDate -> "You have the newest version"
+                                    // Also covers being switched off, which cannot be reached from
+                                    // here because the button is hidden then.
+                                    UpdateStatus.Unknown -> "Could not check just now"
+                                }
+                            }
                         },
                     )
                 }

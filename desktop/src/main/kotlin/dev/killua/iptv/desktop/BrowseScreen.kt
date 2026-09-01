@@ -286,6 +286,11 @@ fun BrowseScreen(
     onSignOut: () -> Unit,
     onExportUserData: (UserDataExport, report: (Boolean) -> Unit) -> Unit,
     onImportUserData: ((String?) -> Unit) -> Unit,
+    /** True while a check the viewer asked for is in flight. */
+    checkingForUpdate: Boolean,
+    /** What the last asked-for check said, or null before one was asked for. */
+    updateCheckMessage: String?,
+    onCheckForUpdate: () -> Unit,
 ) {
     // Read once, at first composition. This screen only exists after a sign-in round trip, so a
     // local file read at launch has long since finished; if it somehow has not, the client opens on
@@ -1970,6 +1975,9 @@ fun BrowseScreen(
                             }
                         }
                     },
+                    checkingForUpdate = checkingForUpdate,
+                    updateCheckMessage = updateCheckMessage,
+                    onCheckForUpdate = onCheckForUpdate,
                     onImport = {
                         dataMessage = null
                         onImportUserData { document ->

@@ -16,6 +16,7 @@ import dev.killua.iptv.domain.model.TrackLanguagePreferences
 import dev.killua.iptv.domain.userdata.UserDataImportPlan
 import dev.killua.iptv.domain.repository.LiveRepository
 import dev.killua.iptv.domain.repository.SessionRepository
+import dev.killua.iptv.domain.update.UpdateStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +36,9 @@ data class SettingsUiState(
     /** Set once a file has been read and understood, so the viewer can approve it before anything moves. */
     val pendingImport: UserDataImportPlan.Ready? = null,
     val isLoggingOut: Boolean = false,
+    val isCheckingForUpdate: Boolean = false,
+    /** What the last manual check said, or null before one was asked for. */
+    val updateCheckResult: String? = null,
     val message: String? = null,
     val errorMessage: String? = null,
 )
@@ -52,6 +56,8 @@ class SettingsViewModel(
     private val buildUserDataExport: suspend (accountId: String) -> String,
     private val planUserDataImport: suspend (accountId: String, document: String) -> UserDataImportPlan,
     private val applyUserDataImport: suspend (accountId: String, plan: UserDataImportPlan.Ready) -> Int,
+    /** Forces a check and publishes the answer, so the prompt above the app can react to it. */
+    private val checkForUpdate: suspend () -> UpdateStatus,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SettingsUiState(account))
     val state: StateFlow<SettingsUiState> = mutableState.asStateFlow()
@@ -82,6 +88,34 @@ class SettingsViewModel(
 
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { preferences.setThemeMode(mode) }
+    }
+
+    /**
+     * Asks now, rather than waiting for the next launch that is allowed to.
+     *
+     * The daily interval is right for something the app does on its own and wrong for someone who
+     * heard a fix exists and wants it - without this, the answer to "is there a new version?" was
+     * "ask again tomorrow". An available update is drawn by the prompt above the whole app, so
+     * this only has to report the two answers that prompt never shows.
+     */
+    fun checkForUpdateNow() {
+        if (mutableState.value.isCheckingForUpdate) return
+        mutableState.update { it.copy(isCheckingForUpdate = true, updateCheckResult = null) }
+        viewModelScope.launch {
+            val status = runCatching { checkForUpdate() }.getOrDefault(UpdateStatus.Unknown)
+            mutableState.update {
+                it.copy(
+                    isCheckingForUpdate = false,
+                    updateCheckResult = when (status) {
+                        is UpdateStatus.Available -> "Version ${status.release.version} is available"
+                        UpdateStatus.UpToDate -> "You have the newest version"
+                        // Covers being switched off as well as being unreachable. Both mean the
+                        // same thing to someone standing here: no answer came back.
+                        UpdateStatus.Unknown -> "Could not check just now"
+                    },
+                )
+            }
+        }
     }
 
     fun setUpdateCheckEnabled(enabled: Boolean) {

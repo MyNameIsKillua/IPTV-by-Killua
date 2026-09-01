@@ -86,6 +86,11 @@ fun SettingsScreen(
     onCaptureKey: (Shortcut?) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
+    /** True while a check the viewer asked for is in flight. */
+    checkingForUpdate: Boolean,
+    /** What the last asked-for check said, or null before one was asked for. */
+    updateCheckMessage: String?,
+    onCheckForUpdate: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     Column(
@@ -454,7 +459,27 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // The daily interval is right for something the client does on its own and wrong
+                // for someone who heard a fix exists. Without this, the answer to "is there a new
+                // version?" was "ask again tomorrow".
+                if (preferences.updateCheckEnabled && !checkingForUpdate) {
+                    ActionButton("Check now", onClick = onCheckForUpdate)
+                    Spacer(Modifier.width(12.dp))
+                }
+                Text(
+                    when {
+                        checkingForUpdate -> "Asking…"
+                        updateCheckMessage != null -> updateCheckMessage
+                        !preferences.updateCheckEnabled -> "Turned off"
+                        else -> ""
+                    },
+                    color = InkMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
             // The reason sits beside the switch rather than only in a document nobody opens. This
             // is the one request this client makes to anyone but the viewer's own provider, so
             // what it costs belongs where the decision about it is made.

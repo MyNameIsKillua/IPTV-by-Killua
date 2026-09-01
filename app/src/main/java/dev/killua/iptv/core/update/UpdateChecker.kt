@@ -43,14 +43,20 @@ class UpdateChecker(
      * must never turn "I did not look" into "you are current". Only [UpdateStatus.Available] puts
      * anything on screen, so the three cases collapse to the same silence.
      */
-    suspend fun check(): UpdateStatus = withContext(Dispatchers.IO) {
+    /**
+     * @param force skips the once-a-day interval, for a viewer who asked rather than for a launch.
+     *   It does **not** skip the switch: off means off, however the check was reached.
+     */
+    suspend fun check(force: Boolean = false): UpdateStatus = withContext(Dispatchers.IO) {
         if (!preferences.updateCheckEnabled.first()) return@withContext UpdateStatus.Unknown
 
         val now = nowMillis()
         val last = preferences.updateCheckedAtMillis.first()
         // `now - last` guards a clock that moved backwards too: a negative age is treated as due
         // rather than as a reason to wait until the clock catches up.
-        if (last in 1..now && now - last < CHECK_INTERVAL_MILLIS) return@withContext UpdateStatus.Unknown
+        if (!force && last in 1..now && now - last < CHECK_INTERVAL_MILLIS) {
+            return@withContext UpdateStatus.Unknown
+        }
 
         val body = runCatching { fetch() }.getOrNull()
         // Recorded even on failure. An unreachable GitHub must not turn every launch into another

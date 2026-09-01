@@ -170,6 +170,7 @@ fun SettingsRoute(viewModel: SettingsViewModel) {
         onThemeChange = viewModel::setTheme,
         onPipChange = viewModel::setPictureInPicture,
         onUpdateCheckChange = viewModel::setUpdateCheckEnabled,
+        onCheckForUpdate = viewModel::checkForUpdateNow,
         onAutoPlayNextChange = viewModel::setAutoPlayNextEpisode,
         onDoubleTapSeekChange = viewModel::setDoubleTapSeekSeconds,
         onHoldPlaybackSpeedChange = viewModel::setHoldPlaybackSpeed,
@@ -236,6 +237,7 @@ fun SettingsScreen(
     onThemeChange: (ThemeMode) -> Unit,
     onPipChange: (Boolean) -> Unit,
     onUpdateCheckChange: (Boolean) -> Unit,
+    onCheckForUpdate: () -> Unit,
     onAutoPlayNextChange: (Boolean) -> Unit,
     onDoubleTapSeekChange: (Int) -> Unit,
     onHoldPlaybackSpeedChange: (Float) -> Unit,
@@ -580,6 +582,30 @@ fun SettingsScreen(
                         Switch(checked = updateCheckEnabled, onCheckedChange = onUpdateCheckChange)
                     },
                     modifier = Modifier.clickable { onUpdateCheckChange(!updateCheckEnabled) },
+                )
+            }
+            item {
+                // The daily interval is right for something the app does on its own and wrong for
+                // someone who heard a fix exists. Without this, the answer to "is there a new
+                // version?" was "ask again tomorrow".
+                ListItem(
+                    headlineContent = { Text("Check now") },
+                    supportingContent = {
+                        Text(
+                            state.updateCheckResult
+                                ?: "Ask GitHub straight away instead of waiting for the daily check",
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Default.Refresh, null) },
+                    trailingContent = {
+                        if (state.isCheckingForUpdate) CircularProgressIndicator(Modifier.padding(8.dp))
+                    },
+                    modifier = Modifier.clickable(
+                        // Off means off, however the check is reached - so the row does nothing
+                        // rather than quietly overriding the switch above it.
+                        enabled = updateCheckEnabled && !state.isCheckingForUpdate,
+                        onClick = onCheckForUpdate,
+                    ),
                 )
             }
             item { SectionTitle("Support") }

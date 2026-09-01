@@ -40,6 +40,8 @@ import java.util.Properties;
 public final class ReleaseSigning {
 
     private static final String KEY_FILE = "update-signing.key";
+    /** The property `sign` reads when handed a file instead of a person. */
+    private static final String PASSPHRASE_PROPERTY = "updateSigningPassphrase";
     private static final int PBKDF2_ITERATIONS = 600_000;
     private static final int SALT_BYTES = 16;
     private static final int IV_BYTES = 12;
@@ -53,9 +55,12 @@ public final class ReleaseSigning {
         }
         switch (args[0]) {
             case "genkey" -> genkey(Path.of(require(args, 1, "a directory outside the repository")));
+            // A third argument is a properties file holding the passphrase, which is how the
+            // release build signs without a person at the keyboard. Two arguments still prompt.
             case "sign" -> sign(
                     Path.of(require(args, 1, "the key file")),
-                    Path.of(require(args, 2, "the file to sign")));
+                    Path.of(require(args, 2, "the file to sign")),
+                    args.length > 3 ? Path.of(args[3]) : null);
             case "verify" -> verify(
                     require(args, 1, "the public key"),
                     Path.of(require(args, 2, "the file")),
@@ -111,13 +116,22 @@ public final class ReleaseSigning {
         System.out.println();
     }
 
-    /** Writes file.sig beside the file: a base64 Ed25519 signature over its bytes. */
-    private static void sign(Path keyFile, Path file) throws Exception {
+    /**
+     * Writes file.sig beside the file: a base64 Ed25519 signature over its bytes.
+     *
+     * @param passphraseFile a properties file holding {@code updateSigningPassphrase}, or null to
+     *   ask the console. The file exists so that signing a release is one command rather than a
+     *   person typing - exactly what `keystore.properties` already does for the Android key, and
+     *   held to the same rules: outside version control, never printed, never in an argument.
+     */
+    private static void sign(Path keyFile, Path file, Path passphraseFile) throws Exception {
         Properties stored = new Properties();
         try (var in = Files.newInputStream(keyFile)) {
             stored.load(in);
         }
-        char[] passphrase = readPassphrase("Passphrase for " + keyFile.getFileName() + ": ");
+        char[] passphrase = passphraseFile == null
+                ? readPassphrase("Passphrase for " + keyFile.getFileName() + ": ")
+                : passphraseFrom(passphraseFile);
         byte[] pkcs8 = cipher(
                 Cipher.DECRYPT_MODE,
                 passphrase,
@@ -184,6 +198,31 @@ public final class ReleaseSigning {
         return console().readPassword(prompt);
     }
 
+    /**
+     * Reads the passphrase out of a properties file, refusing anything that is not one.
+     *
+     * A missing file and a missing property are both a stop rather than a fallback to prompting:
+     * an automated release that silently waits for a keyboard nobody is at looks exactly like one
+     * that hung, and the failure would be found by a timeout rather than by a message.
+     */
+    private static char[] passphraseFrom(Path file) throws Exception {
+        if (!Files.isRegularFile(file)) {
+            System.err.println("No such passphrase file: " + file);
+            System.exit(1);
+        }
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(file)) {
+            properties.load(in);
+        }
+        String value = properties.getProperty(PASSPHRASE_PROPERTY);
+        if (value == null || value.isBlank()) {
+            System.err.println(file + " has no " + PASSPHRASE_PROPERTY + " property.");
+            System.err.println("Add one line:  " + PASSPHRASE_PROPERTY + "=<the passphrase>");
+            System.exit(1);
+        }
+        return value.toCharArray();
+    }
+
     private static Console console() {
         Console console = System.console();
         if (console == null) {
@@ -222,9 +261,12 @@ public final class ReleaseSigning {
         System.out.println("Killua IPTV release signing.");
         System.out.println();
         System.out.println("  genkey <directory>                     create the pair, print the public key");
-        System.out.println("  sign   <key file> <file>               write <file>.sig");
+        System.out.println("  sign   <key file> <file> [props]       write <file>.sig");
         System.out.println("  verify <public key> <file> <sig file>  check one before publishing it");
         System.out.println();
         System.out.println("The directory must be outside this repository and outside any synced folder.");
+        System.out.println();
+        System.out.println("sign asks the console for the passphrase. Give it a properties file holding");
+        System.out.println(PASSPHRASE_PROPERTY + " to sign without one - keep that file out of version control.");
     }
 }

@@ -42,13 +42,20 @@ class DesktopUpdateChecker(
      */
     data class Outcome(val status: UpdateStatus, val checkedAtMillis: Long?)
 
-    suspend fun check(preferences: DesktopPreferences): Outcome = withContext(Dispatchers.IO) {
+    /**
+     * @param force skips the once-a-day interval, for a viewer who asked rather than for a launch.
+     *   It does **not** skip the switch: off means off, however the check was reached.
+     */
+    suspend fun check(
+        preferences: DesktopPreferences,
+        force: Boolean = false,
+    ): Outcome = withContext(Dispatchers.IO) {
         if (!preferences.updateCheckEnabled) return@withContext Outcome(UpdateStatus.Unknown, null)
 
         val now = nowMillis()
         val last = preferences.updateCheckedAtMillis
         // A clock that moved backwards reads as due rather than as a reason to wait for it.
-        if (last in 1..now && now - last < CHECK_INTERVAL_MILLIS) {
+        if (!force && last in 1..now && now - last < CHECK_INTERVAL_MILLIS) {
             return@withContext Outcome(UpdateStatus.Unknown, null)
         }
 

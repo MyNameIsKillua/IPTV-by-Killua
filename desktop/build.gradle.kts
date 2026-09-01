@@ -30,7 +30,7 @@ kotlin {
  * hand-maintained copies of a version number is a client that eventually offers an update to the
  * version it already is, so the second one is generated from the first.
  */
-val appVersion = "1.0.3"
+val appVersion = "1.0.4"
 
 val generateVersionResource by tasks.registering {
     // Both are read into locals here, at configuration time, and only the locals are captured by

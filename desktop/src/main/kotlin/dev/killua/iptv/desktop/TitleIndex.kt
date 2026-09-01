@@ -2,6 +2,7 @@ package dev.killua.iptv.desktop
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.killua.iptv.core.text.withoutByteOrderMark
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -38,7 +39,7 @@ class TitleIndex(private val directory: File = DesktopUserData.defaultDirectory(
     suspend fun load(fingerprint: String): Map<String, IndexedTitle> = withContext(Dispatchers.IO) {
         runCatching {
             file.takeIf { it.isFile }?.readText()
-                ?.let { json.decodeFromString<IndexedTitles>(it) }
+                ?.let { json.decodeFromString<IndexedTitles>(it.withoutByteOrderMark()) }
                 ?.takeIf { it.accountFingerprint == fingerprint }
                 ?.entries
         }.getOrNull().orEmpty()

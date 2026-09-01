@@ -1678,3 +1678,43 @@ configuration cache refused to store it, which is how it was caught rather than 
 **Pending.** Everything about this is unverified on hardware, and it cannot be fully verified until
 a public release exists to check against: an installed build has nothing newer to find. See steps
 35-38 in `docs/CLAUDE_HANDOFF.md`.
+
+## Three invisible bytes — 1 September 2026
+
+The owner's Windows settings reset themselves after an update, and the update was not the cause.
+The cause was a byte order mark, put there by me.
+
+To trigger the update prompt before its daily interval was up, `preferences.json` was rewritten with
+a PowerShell one-liner. **`Set-Content -Encoding utf8` writes UTF-8 *with* a mark in Windows
+PowerShell** — `EF BB BF`, three bytes before the opening brace. JSON has no room for a character
+there, so `decodeFromString` threw, `PreferenceStore.load` caught it and returned
+`DesktopPreferences()`, and the next launch was a client that had forgotten everything.
+
+**It also faked the result it was supposed to produce.** The default `updateCheckedAtMillis` is `0`,
+so the unreadable file made the check run — which looked exactly like the edit having worked.
+
+### What the project already knew, and where it had not applied it
+
+Every place this app reads something a **provider** sent already strips a mark: `ServerUrlNormalizer`,
+`StreamUrlPolicy`, `XtreamM3uUrlParser`, `M3uPlaylistParser`, and there is a test asserting a marked
+JSON array still parses. It had never done so for its **own** files. Defensive parsing had been
+aimed outward only.
+
+Three of the four readers were exposed, and the ranking is not the obvious one:
+
+- **`UserDataExportCodec.decode`** is in `:shared` and is the worst of them. It reads the desktop's
+  own state file *and* every import on either client, so a marked file meant watch progress, marks,
+  favourites and the saved list silently gone.
+- **`PreferenceStore.load`** — the one that was actually hit.
+- **`TitleIndex`** — a cache, so cheap to lose, but it would be lost for ever rather than once.
+- **`CredentialVault` is not exposed**, checked rather than assumed: it reads bytes, unseals them
+  with DPAPI, and only then decodes. The JSON exists only inside a sealed binary blob, where no
+  editor can reach it.
+
+All three now strip a **leading** mark, through one named helper rather than three copies of the
+same `startsWith`. Only the leading one: a mark further into a document is content, and quietly
+deleting somebody's content is a worse bug than the one being fixed, and much harder to notice.
+
+**Windows is where this matters.** Notepad wrote marks for decades, plenty of editors still do, and
+whoever loses their settings this way has done nothing wrong. Silently discarding everything over
+three bytes nobody can see is the app's fault, not theirs.

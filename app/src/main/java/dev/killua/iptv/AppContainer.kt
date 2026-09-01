@@ -1,6 +1,7 @@
 package dev.killua.iptv
 
 import android.content.Context
+import android.os.Build
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import coil3.ImageLoader
@@ -40,6 +41,10 @@ import dev.killua.iptv.data.repository.DefaultWatchlistRepository
 import dev.killua.iptv.data.repository.UserDataExporter
 import dev.killua.iptv.data.repository.UserDataImporter
 import dev.killua.iptv.data.xtream.XtreamRemoteDataSource
+import dev.killua.iptv.domain.diagnostics.Diagnostics
+import dev.killua.iptv.domain.diagnostics.DiagnosticsClient
+import dev.killua.iptv.domain.diagnostics.LibrarySize
+import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.TrackLanguagePreferences
 import dev.killua.iptv.domain.repository.LiveRepository
 import dev.killua.iptv.domain.repository.MovieRepository
@@ -155,6 +160,41 @@ class AppContainer(context: Context) {
     /** Runs a check and publishes the result. [force] is a viewer asking, not a launch. */
     suspend fun checkForUpdate(force: Boolean = false): UpdateStatus =
         updateChecker.check(force).also { updateStatus.value = it }
+
+    /**
+     * What this installation can safely say about itself, assembled from typed facts only.
+     *
+     * Every value here comes from `BuildConfig`, from `Build`, from an enum on the account, or from
+     * a `COUNT(*)`. Nothing reads a message, a URL or a response body, which is what makes the
+     * report safe to paste into a public issue - see [Diagnostics].
+     *
+     * @param television a fact the UI knows and this layer does not.
+     */
+    suspend fun collectDiagnostics(account: Account?, television: Boolean): Diagnostics {
+        val counts = account?.let {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    LibrarySize(
+                        channels = database.liveDao().countChannels(it.id),
+                        movies = database.movieDao().countMovies(it.id),
+                        series = database.seriesDao().countSeries(it.id),
+                    )
+                }.getOrNull()
+            }
+        }
+        return Diagnostics(
+            client = DiagnosticsClient.Android,
+            appVersion = "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+            platform = "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+            device = Build.MODEL,
+            television = television,
+            accountKind = account?.source,
+            accountStatus = account?.status,
+            library = counts,
+            updateCheckEnabled = preferences.updateCheckEnabled.first(),
+            databaseVersion = IptvDatabase.VERSION,
+        )
+    }
 
     /**
      * Coil's process-wide loader for channel artwork. Video playback does not use this cache.

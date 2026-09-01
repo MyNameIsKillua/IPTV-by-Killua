@@ -21,7 +21,7 @@ import androidx.room.RoomDatabase
         WatchProgressEntity::class,
         WatchlistEntity::class,
     ],
-    version = 10,
+    version = IptvDatabase.VERSION,
     exportSchema = true,
 )
 abstract class IptvDatabase : RoomDatabase() {
@@ -34,4 +34,16 @@ abstract class IptvDatabase : RoomDatabase() {
     // Read-only, for the Settings export. Adding a DAO is not a schema change: it declares queries
     // against tables that already exist, so no version bump and no migration.
     abstract fun userDataDao(): UserDataDao
+
+    companion object {
+        /**
+         * The schema version, named so the annotation and anything that reports it read the same
+         * number. A diagnostics report that disagreed with the database it describes would be
+         * worse than one that omitted it.
+         *
+         * Raising this still requires everything `docs/DATABASE.md` asks for: an exported schema,
+         * a non-destructive migration, a migration test, and registration in the builder.
+         */
+        const val VERSION = 10
+    }
 }

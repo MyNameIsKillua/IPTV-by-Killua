@@ -16,6 +16,7 @@ import dev.killua.iptv.domain.model.TrackLanguagePreferences
 import dev.killua.iptv.domain.userdata.UserDataImportPlan
 import dev.killua.iptv.domain.repository.LiveRepository
 import dev.killua.iptv.domain.repository.SessionRepository
+import dev.killua.iptv.domain.diagnostics.Diagnostics
 import dev.killua.iptv.domain.update.UpdateStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,8 @@ data class SettingsUiState(
     val isCheckingForUpdate: Boolean = false,
     /** What the last manual check said, or null before one was asked for. */
     val updateCheckResult: String? = null,
+    /** The diagnostics report, once the viewer has asked to see it. Null means not shown. */
+    val diagnostics: String? = null,
     val message: String? = null,
     val errorMessage: String? = null,
 )
@@ -58,6 +61,8 @@ class SettingsViewModel(
     private val applyUserDataImport: suspend (accountId: String, plan: UserDataImportPlan.Ready) -> Int,
     /** Forces a check and publishes the answer, so the prompt above the app can react to it. */
     private val checkForUpdate: suspend () -> UpdateStatus,
+    /** Assembles what this installation can safely say about itself. See `Diagnostics`. */
+    private val collectDiagnostics: suspend (television: Boolean) -> Diagnostics,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SettingsUiState(account))
     val state: StateFlow<SettingsUiState> = mutableState.asStateFlow()
@@ -116,6 +121,25 @@ class SettingsViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * Builds the report and puts it on screen.
+     *
+     * Shown before it can be copied, always, because a report the viewer has not read is a report
+     * they cannot decide about - and deciding is the whole of what makes this opt-in.
+     */
+    fun showDiagnostics(television: Boolean) {
+        viewModelScope.launch {
+            val text = runCatching { collectDiagnostics(television).render() }.getOrNull()
+            mutableState.update {
+                it.copy(diagnostics = text ?: "Diagnostics could not be assembled.")
+            }
+        }
+    }
+
+    fun dismissDiagnostics() {
+        mutableState.update { it.copy(diagnostics = null) }
     }
 
     fun setUpdateCheckEnabled(enabled: Boolean) {

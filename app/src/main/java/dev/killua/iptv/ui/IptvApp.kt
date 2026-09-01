@@ -544,6 +544,9 @@ private fun MainRoot(
                             },
                             // Forced, because this one is a person asking rather than a launch.
                             checkForUpdate = { container.checkForUpdate(force = true) },
+                            collectDiagnostics = { television ->
+                                container.collectDiagnostics(session.account, television)
+                            },
                         )
                     },
                 )

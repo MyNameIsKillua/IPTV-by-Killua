@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.ClosedCaption
@@ -65,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -81,6 +83,7 @@ import dev.killua.iptv.domain.model.languageDisplayName
 import dev.killua.iptv.domain.support.CryptoAddress
 import dev.killua.iptv.domain.support.Donations
 import dev.killua.iptv.domain.userdata.UserDataImportPlan
+import dev.killua.iptv.ui.theme.LocalIsTelevision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -171,6 +174,8 @@ fun SettingsRoute(viewModel: SettingsViewModel) {
         onPipChange = viewModel::setPictureInPicture,
         onUpdateCheckChange = viewModel::setUpdateCheckEnabled,
         onCheckForUpdate = viewModel::checkForUpdateNow,
+        onShowDiagnostics = viewModel::showDiagnostics,
+        onDismissDiagnostics = viewModel::dismissDiagnostics,
         onAutoPlayNextChange = viewModel::setAutoPlayNextEpisode,
         onDoubleTapSeekChange = viewModel::setDoubleTapSeekSeconds,
         onHoldPlaybackSpeedChange = viewModel::setHoldPlaybackSpeed,
@@ -238,6 +243,8 @@ fun SettingsScreen(
     onPipChange: (Boolean) -> Unit,
     onUpdateCheckChange: (Boolean) -> Unit,
     onCheckForUpdate: () -> Unit,
+    onShowDiagnostics: (television: Boolean) -> Unit,
+    onDismissDiagnostics: () -> Unit,
     onAutoPlayNextChange: (Boolean) -> Unit,
     onDoubleTapSeekChange: (Int) -> Unit,
     onHoldPlaybackSpeedChange: (Float) -> Unit,
@@ -253,6 +260,39 @@ fun SettingsScreen(
     var showSpeedOptions by remember { mutableStateOf(false) }
     var showSubtitleSizeOptions by remember { mutableStateOf(false) }
     var showSubtitleBackgroundOptions by remember { mutableStateOf(false) }
+
+    // Shown before it can be copied, deliberately. A report the viewer has not read is a report
+    // they cannot decide about, and deciding is the whole of what makes this opt-in.
+    state.diagnostics?.let { report ->
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = onDismissDiagnostics,
+            title = { Text("Diagnostics") },
+            text = {
+                Column {
+                    Text(
+                        report,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "This is everything. There is no server, user name, password or title in " +
+                            "it, and nothing was sent anywhere.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    copyToClipboard(context, label = "Killua IPTV diagnostics", text = report)
+                    onDismissDiagnostics()
+                }) { Text("Copy") }
+            },
+            dismissButton = { TextButton(onClick = onDismissDiagnostics) { Text("Close") } },
+        )
+    }
 
     state.pendingImport?.let { plan ->
         AlertDialog(
@@ -547,6 +587,20 @@ fun SettingsScreen(
                     headlineContent = { Text("Private by design") },
                     supportingContent = { Text("No analytics, ads, telemetry, or third-party account service") },
                     leadingContent = { Icon(Icons.Outlined.Info, null) },
+                )
+            }
+            item {
+                val television = LocalIsTelevision.current
+                ListItem(
+                    headlineContent = { Text("Diagnostics") },
+                    supportingContent = {
+                        Text(
+                            "See exactly what this app can say about itself for a bug report. " +
+                                "Nothing is sent anywhere.",
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Outlined.BugReport, null) },
+                    modifier = Modifier.clickable { onShowDiagnostics(television) },
                 )
             }
             item { SectionTitle("Updates") }

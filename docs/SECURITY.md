@@ -72,6 +72,35 @@ The Keystore key does not require biometric/user authentication. This is a usabi
 - Leaving authenticated session state stops and clears any active MediaSession item before recovery/login UI is shown.
 - User-facing errors contain safe categories rather than raw exceptions, server bodies, or authenticated URLs.
 
+### Diagnostics
+
+*Settings → Diagnostics* shows what this installation can say about itself for a bug report. It is
+**opt-in, local, and shown before it can be copied** — nothing is sent anywhere, by this feature or
+by anything else in the app.
+
+**Every field is a type rather than a message, and that is the control.** The failure is a
+`FailureKind` enum, not an exception; the account is a kind and a status, not an address; the
+library is three integers from `COUNT(*)`. There is no free-text field, so no path exists by which a
+server URL, a user name or a raw response body arrives in a report — not because something strips
+them afterwards, but because nothing can put them in.
+
+What is deliberately absent, having been considered rather than overlooked:
+
+- **The account.** No server, no user name, no password, no account URL — and not the one-way
+  fingerprint either, which identifies nothing useful in a report and is still an identifier.
+- **Exception messages.** They routinely carry the authenticated URL that failed. The enum says
+  what kind of thing went wrong, which is what a reader actually needs.
+- **Titles.** What is in someone's library is their business; the counts answer the questions that
+  scale bugs raise.
+
+A guard behind the design refuses any value containing `://` or `@`, replacing it with
+`(withheld)`. It should never fire — the typed fields make a credential impossible to express — and
+exists so that a field added carelessly later is caught here rather than in somebody's public
+issue. It is tested with deliberately hostile values.
+
+The report is shown on screen before *Copy* is offered, because a report the viewer has not read is
+one they cannot decide about, and deciding is what makes this opt-in rather than merely local.
+
 ### The update check
 
 This is the only thing either client does on the network without being asked, so it gets the most

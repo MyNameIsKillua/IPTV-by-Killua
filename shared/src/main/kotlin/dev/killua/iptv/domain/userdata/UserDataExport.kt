@@ -1,5 +1,6 @@
 package dev.killua.iptv.domain.userdata
 
+import dev.killua.iptv.core.text.withoutByteOrderMark
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -121,7 +122,10 @@ object UserDataExportCodec {
     fun encode(export: UserDataExport): String = json.encodeToString(export)
 
     fun decode(text: String): UserDataImportResult = try {
-        val export = json.decodeFromString<UserDataExport>(text)
+        // Stripped before parsing rather than after failing. A byte order mark makes a valid
+        // document unparseable, and every path into here reads a file somebody's editor, cloud
+        // service or shell may have touched - including this client's own state file.
+        val export = json.decodeFromString<UserDataExport>(text.withoutByteOrderMark())
         when {
             export.accountFingerprint.isBlank() -> UserDataImportResult.NotAnExport
             export.formatVersion > CURRENT_FORMAT_VERSION ->

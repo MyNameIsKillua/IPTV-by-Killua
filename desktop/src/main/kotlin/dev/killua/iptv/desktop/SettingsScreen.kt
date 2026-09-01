@@ -28,8 +28,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.killua.iptv.domain.diagnostics.Diagnostics
+import dev.killua.iptv.domain.diagnostics.DiagnosticsClient
+import dev.killua.iptv.domain.diagnostics.LibrarySize
 import dev.killua.iptv.domain.model.AccountStatus
 import dev.killua.iptv.domain.account.ExpiryWarning
 import dev.killua.iptv.domain.account.expiryWarningFor
@@ -489,6 +493,59 @@ fun SettingsScreen(
                     "address, as it would for any web page. Turned off, this client never " +
                     "contacts it.",
             )
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        SettingsCard("Diagnostics") {
+            // Everything this needs is already a parameter of this screen, so the report is built
+            // here rather than threaded down from the window. It reads only typed facts - see
+            // Diagnostics in :shared - which is what makes it safe to paste into a public issue.
+            var report by remember { mutableStateOf<String?>(null) }
+
+            Hint(
+                "What this client can say about itself for a bug report. Nothing is sent " +
+                    "anywhere, and there is no server, user name, password or title in it.",
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ActionButton(if (report == null) "Show" else "Hide") {
+                    report = if (report != null) {
+                        null
+                    } else {
+                        Diagnostics(
+                            client = DiagnosticsClient.Windows,
+                            appVersion = DesktopUpdateChecker.installedVersion(),
+                            platform = listOfNotNull(
+                                System.getProperty("os.name"),
+                                System.getProperty("os.version"),
+                            ).joinToString(" "),
+                            accountKind = session.account.source,
+                            accountStatus = session.account.status,
+                            library = LibrarySize(
+                                channels = library.countOf(LibraryKind.Channels),
+                                movies = library.countOf(LibraryKind.Movies),
+                                series = library.countOf(LibraryKind.Series),
+                            ),
+                            updateCheckEnabled = preferences.updateCheckEnabled,
+                            playerAvailable = vlcAvailable,
+                        ).render()
+                    }
+                }
+                report?.let { text ->
+                    Spacer(Modifier.width(10.dp))
+                    ActionButton("Copy") { copyToClipboard(text) }
+                }
+            }
+            report?.let { text ->
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text,
+                    color = Ink,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
 
         Spacer(Modifier.height(18.dp))

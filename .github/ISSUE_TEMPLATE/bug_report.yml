@@ -34,8 +34,8 @@ body:
     id: version
     attributes:
       label: Which version?
-      description: "Settings → Updates → Version. For example: 1.0.4 (build 49)."
-      placeholder: "1.0.4"
+      description: "Settings → Updates → Version. For example: 1.0.5 (build 50)."
+      placeholder: "1.0.5"
     validations:
       required: true
 

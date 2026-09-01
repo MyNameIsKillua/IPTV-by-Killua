@@ -126,6 +126,25 @@ class SidecarFilesTest {
     }
 
     @Test
+    fun `a byte order mark does not silently reset every setting`() = runBlocking {
+        // The bug this closes, reproduced exactly. On 1 September 2026 that file was rewritten by
+        // a PowerShell one-liner - `Set-Content -Encoding utf8` writes a mark in Windows
+        // PowerShell - the parser refused it, the loader fell back to the defaults, and the next
+        // launch looked like a client that had forgotten everything. Notepad wrote marks for
+        // decades and plenty of editors still do, so the person who loses their settings this way
+        // has done nothing wrong.
+        val store = PreferenceStore(folder.root)
+        store.save(DesktopPreferences(volume = 42, section = "Movies"))
+        val written = File(folder.root, "preferences.json")
+        written.writeText("﻿" + written.readText())
+
+        val loaded = store.load()
+
+        assertThat(loaded.volume).isEqualTo(42)
+        assertThat(loaded.section).isEqualTo("Movies")
+    }
+
+    @Test
     fun `a preferences file from a newer version keeps what it recognises`() = runBlocking {
         File(folder.root, "preferences.json").writeText(
             """{ "section": "Series", "volume": 20, "somethingLater": true }""",

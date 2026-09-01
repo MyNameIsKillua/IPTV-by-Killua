@@ -3,6 +3,7 @@ package dev.killua.iptv.desktop
 import dev.killua.iptv.domain.model.TrackLanguagePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.killua.iptv.core.text.withoutByteOrderMark
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -236,7 +237,7 @@ class PreferenceStore(private val directory: File = DesktopUserData.defaultDirec
     suspend fun load(): DesktopPreferences = withContext(Dispatchers.IO) {
         runCatching {
             file.takeIf { it.isFile }?.readText()?.let {
-                json.decodeFromString<DesktopPreferences>(it)
+                json.decodeFromString<DesktopPreferences>(it.withoutByteOrderMark())
             }
         }.getOrNull() ?: DesktopPreferences()
     }

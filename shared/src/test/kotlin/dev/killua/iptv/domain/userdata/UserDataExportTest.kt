@@ -7,6 +7,20 @@ import org.junit.Test
 class UserDataExportTest {
 
     @Test
+    fun `a byte order mark before the document does not throw the whole export away`() {
+        // What this guards is watch progress. A marked file is what an editor, a cloud service or
+        // a Windows shell can leave behind, and before this the decoder refused it - which on the
+        // desktop meant every mark, favourite and resume position silently gone on the next
+        // launch, with nothing on screen to say why.
+        val marked = "﻿" + UserDataExportCodec.encode(SAMPLE)
+
+        val decoded = UserDataExportCodec.decode(marked)
+
+        assertThat(decoded).isInstanceOf(UserDataImportResult.Ok::class.java)
+        assertThat((decoded as UserDataImportResult.Ok).export).isEqualTo(SAMPLE)
+    }
+
+    @Test
     fun `an export survives a round trip`() {
         val decoded = UserDataExportCodec.decode(UserDataExportCodec.encode(SAMPLE))
 

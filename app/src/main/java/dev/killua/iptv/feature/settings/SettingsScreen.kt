@@ -69,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.killua.iptv.BuildConfig
 import dev.killua.iptv.core.preferences.PlaybackGestureOptions
 import dev.killua.iptv.domain.model.Account
 import dev.killua.iptv.domain.model.SubtitleBackground
@@ -547,6 +548,19 @@ fun SettingsScreen(
                 )
             }
             item { SectionTitle("Updates") }
+            item {
+                // The app never said what it was, which made every bug report start with a
+                // question and made an update impossible to confirm by looking. It sits here
+                // rather than in a separate About screen because this is where someone already
+                // is when they wonder whether they are current.
+                ListItem(
+                    headlineContent = { Text("Version") },
+                    supportingContent = {
+                        Text("${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+                    },
+                    leadingContent = { Icon(Icons.Outlined.Info, null) },
+                )
+            }
             item {
                 ListItem(
                     headlineContent = { Text("Check for updates") },

@@ -41,8 +41,8 @@ android {
         applicationId = "dev.killua.iptv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.0.2"
+        versionCode = 48
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

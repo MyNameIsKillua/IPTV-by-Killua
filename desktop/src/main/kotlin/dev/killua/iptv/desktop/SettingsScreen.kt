@@ -429,6 +429,12 @@ fun SettingsScreen(
         Spacer(Modifier.height(18.dp))
 
         SettingsCard("Updates") {
+            // The client never said what it was, which made every bug report start with a question
+            // and made an update impossible to confirm by looking. Read from the same generated
+            // resource the update check compares against, so this row and that decision can never
+            // disagree about what is running.
+            InfoRow("Version", DesktopUpdateChecker.installedVersion())
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = preferences.updateCheckEnabled,

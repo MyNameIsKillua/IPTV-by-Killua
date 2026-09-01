@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in the app does not work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before anything else: do not paste your provider details
+
+        An IPTV account URL contains your **username and password in plain text**. So do the
+        `player_api.php` and `get.php` links, and so do the stream addresses the app builds from
+        them. A GitHub issue is public and permanent, and editing a comment does not remove it
+        from the history.
+
+        **Never include** your server address, username, password, account URL, a screenshot that
+        shows any of them, or a raw log. If a URL matters to the report, replace the host with
+        `provider.example` and the credentials with `user` and `pass` — the shape is what helps,
+        not the values.
+
+        Screenshots are welcome, but check the account card in Settings is not in them.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where does it happen?
+      options:
+        - Android phone or tablet
+        - Fire TV Stick or Android TV
+        - Windows
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Which version?
+      description: "Settings → Updates → Version. For example: 1.0.3 (build 48)."
+      placeholder: "1.0.3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what the app did, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be reproduced?
+      description: >
+        Every step, from opening the app. If it only happens sometimes, say roughly how often and
+        what seems to bring it on.
+
+  - type: markdown
+    attributes:
+      value: |
+        **On Xtream providers:** every provider implements the protocol a little differently, and
+        this app is only ever tested against the ones its maintainer has. If something works for
+        someone else and not for you, that is a real report and worth filing — please say what is
+        different about your setup, without naming your provider or its address.
+
+  - type: checkboxes
+    id: no-credentials
+    attributes:
+      label: One confirmation
+      options:
+        - label: >
+            This report contains no server address, username, password, account URL, or screenshot
+            that shows them.
+          required: true

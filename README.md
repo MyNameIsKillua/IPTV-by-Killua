@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.0.2" src="https://img.shields.io/badge/version-1.0.2-7C3AED">
+  <img alt="Version 1.0.3" src="https://img.shields.io/badge/version-1.0.3-7C3AED">
   <img alt="Android 8.0 or newer" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Windows 10 or newer" src="https://img.shields.io/badge/Windows-10%2B-0078D4?logo=windows&logoColor=white">
   <img alt="Kotlin and Jetpack Compose" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
@@ -155,10 +155,10 @@ Everything is on the [releases page](../../releases).
 
 | Your device | Download |
 | --- | --- |
-| Android phone or tablet | `Killua-IPTV-Android-1.0.2.apk` |
-| **Fire TV Stick / Android TV** | `Killua-IPTV-Android-1.0.2.apk` — the same file |
-| Windows, installed | `Killua-IPTV-Windows-1.0.2.msi` |
-| Windows, no installer | `Killua-IPTV-Windows-1.0.2.zip` |
+| Android phone or tablet | `Killua-IPTV-Android-1.0.3.apk` |
+| **Fire TV Stick / Android TV** | `Killua-IPTV-Android-1.0.3.apk` — the same file |
+| Windows, installed | `Killua-IPTV-Windows-1.0.3.msi` |
+| Windows, no installer | `Killua-IPTV-Windows-1.0.3.zip` |
 
 > [!NOTE]
 > Nothing here is signed by a certificate authority, so Windows and Android both warn before
@@ -210,7 +210,7 @@ A television has no file manager, so pick one of these.
 4. The television asks whether to trust the computer — tick **Always allow**, accept, then:
 
    ```bash
-   adb install Killua-IPTV-Android-1.0.2.apk
+   adb install Killua-IPTV-Android-1.0.3.apk
    ```
 
 It lands on the Fire TV home screen under **Apps & Channels**, at the end of the row.
@@ -224,7 +224,7 @@ It lands on the Fire TV home screen under **Apps & Channels**, at the end of the
 **Needs** [VLC](https://www.videolan.org/vlc/). The client plays through libvlc and does not bundle
 it; without VLC it starts and says so rather than failing at the first channel.
 
-**The installer** — `Killua-IPTV-Windows-1.0.2.msi`
+**The installer** — `Killua-IPTV-Windows-1.0.3.msi`
 
 Two dialogs come first and both are expected:
 
@@ -236,7 +236,7 @@ Two dialogs come first and both are expected:
 Uninstalling removes the program and **keeps** `%LOCALAPPDATA%\KilluaIPTV` — your watch history,
 favourites and list. Reinstalling finds them again.
 
-**Or without installing** — `Killua-IPTV-Windows-1.0.2.zip`
+**Or without installing** — `Killua-IPTV-Windows-1.0.3.zip`
 
 Unpack it anywhere and run `Killua IPTV.exe`. Same program, no installer, no administrator prompt.
 
